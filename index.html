@@ -36,8 +36,8 @@
             const pass = document.getElementById('password');
             const btn = document.getElementById('loginBtn');
             
-            // Hardcoded Credentials for Frontend Demo
-            // In production, replace with Firebase Authentication
+            // Hardcoded Credentials for Demo
+            // In production, replace with proper authentication
             if (user.value === "admin" && pass.value === "admin") {
                 // Set admin session with role
                 sessionStorage.setItem("stocksense_logged_in", "true");
@@ -45,7 +45,7 @@
                 sessionStorage.setItem("stocksense_user_id", "admin_001");
                 sessionStorage.setItem("stocksense_role", "admin");
                 sessionStorage.setItem("stocksense_display_name", "System Administrator");
-                window.location.href = "dashboard.html";
+                window.location.href = "dashboard-sqlite.html";
             } else if (user.value === "staff" && pass.value === "staff") {
                 // Set staff session with limited role
                 sessionStorage.setItem("stocksense_logged_in", "true");
@@ -53,7 +53,7 @@
                 sessionStorage.setItem("stocksense_user_id", "staff_001");
                 sessionStorage.setItem("stocksense_role", "staff");
                 sessionStorage.setItem("stocksense_display_name", "Warehouse Staff");
-                window.location.href = "dashboard.html";
+                window.location.href = "dashboard-sqlite.html";
             } else {
                 // Error State
                 user.classList.add('error');

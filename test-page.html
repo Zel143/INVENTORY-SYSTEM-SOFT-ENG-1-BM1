@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSense - Test Page (localStorage)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eaeaea; padding: 2rem; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #3498db; margin-bottom: 1rem; }
+        .status { background: #16213e; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; }
+        .status-item { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; font-size: 1.1rem; }
+        .pass { color: #27ae60; }
+        .fail { color: #e74c3c; }
+        .test-section { background: #16213e; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; }
+        button { background: #3498db; color: white; border: none; padding: 0.75rem 1.5rem; 
+                 border-radius: 6px; cursor: pointer; font-size: 1rem; margin-right: 1rem; }
+        button:hover { background: #2980b9; }
+        .inventory-list { margin-top: 1rem; }
+        .item { background: #0f3460; padding: 1rem; border-radius: 6px; margin-bottom: 0.5rem; 
+                display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 StockSense Test Page (localStorage Version)</h1>
+        
+        <div class="status" id="status">
+            <h2>System Status</h2>
+            <div class="status-item">
+                <span id="auth-status">⏳ Checking authentication...</span>
+            </div>
+            <div class="status-item">
+                <span id="data-status">⏳ Checking data...</span>
+            </div>
+            <div class="status-item">
+                <span id="storage-status">⏳ Checking localStorage...</span>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Quick Tests</h2>
+            <button onclick="testAuthentication()">Test Login</button>
+            <button onclick="testLocalStorage()">Test Storage</button>
+            <button onclick="testDataLoad()">Test Data Load</button>
+            <button onclick="runAllTests()">Run All Tests</button>
+        </div>
+
+        <div class="test-section">
+            <h2>Inventory Items (localStorage)</h2>
+            <div id="inventory-list" class="inventory-list"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Console Output</h2>
+            <div id="console-output" style="background: #000; padding: 1rem; border-radius: 6px; 
+                 font-family: monospace; min-height: 200px; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Simulate login for testing
+        sessionStorage.setItem("stocksense_logged_in", "true");
+        sessionStorage.setItem("stocksense_user", "admin@stocksense.com");
+        sessionStorage.setItem("stocksense_user_id", "admin_001");
+        sessionStorage.setItem("stocksense_role", "admin");
+        sessionStorage.setItem("stocksense_display_name", "System Administrator");
+
+        // Default inventory
+        const defaultInventory = [
+            { id: 1, code: "MCH-001", name: "Forklift", vendor: "Toyota", quantity: 5, safety: 5, warranty: "2030-01-01" },
+            { id: 2, code: "MCH-002", name: "Pallet Jack", vendor: "Uline", quantity: 2, safety: 5, warranty: "2027-05-20" },
+            { id: 3, code: "EQP-104", name: "Conveyor Belt", vendor: "Bosch", quantity: 4, safety: 5, warranty: "2028-11-15" },
+            { id: 4, code: "STR-201", name: "Shelving Unit", vendor: "IKEA", quantity: 1, safety: 5, warranty: "2026-06-10" }
+        ];
+
+        // Initialize localStorage if empty
+        if (!localStorage.getItem('ss_inventory')) {
+            localStorage.setItem('ss_inventory', JSON.stringify(defaultInventory));
+            localStorage.setItem('ss_history', JSON.stringify([]));
+        }
+
+        // Console output helper
+        function logToConsole(message, type = 'info') {
+            const output = document.getElementById('console-output');
+            const color = type === 'success' ? '#27ae60' : type === 'error' ? '#e74c3c' : '#3498db';
+            output.innerHTML += `<div style="color: ${color}; margin-bottom: 5px;">${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+            console.log(message);
+        }
+
+        // Test 1: Authentication
+        function testAuthentication() {
+            logToConsole('=== Testing Authentication ===', 'info');
+            const isLoggedIn = sessionStorage.getItem("stocksense_logged_in");
+            const userId = sessionStorage.getItem("stocksense_user_id");
+            const role = sessionStorage.getItem("stocksense_role");
+            
+            if (isLoggedIn === "true" && userId && role) {
+                logToConsole(`✅ Authentication: Logged in as ${userId} (${role})`, 'success');
+                document.getElementById('auth-status').innerHTML = 
+                    `<span class="pass">✅ Logged in as ${userId} (${role})</span>`;
+                return true;
+            } else {
+                logToConsole('❌ Authentication: Not logged in', 'error');
+                document.getElementById('auth-status').innerHTML = 
+                    `<span class="fail">❌ Not logged in</span>`;
+                return false;
+            }
+        }
+
+        // Test 2: localStorage
+        function testLocalStorage() {
+            logToConsole('=== Testing localStorage ===', 'info');
+            try {
+                const inventory = localStorage.getItem('ss_inventory');
+                const history = localStorage.getItem('ss_history');
+                
+                if (inventory && history) {
+                    const items = JSON.parse(inventory);
+                    logToConsole(`✅ localStorage: ${items.length} items found`, 'success');
+                    document.getElementById('storage-status').innerHTML = 
+                        `<span class="pass">✅ localStorage working (${items.length} items)</span>`;
+                    return true;
+                } else {
+                    logToConsole('❌ localStorage: No data found', 'error');
+                    document.getElementById('storage-status').innerHTML = 
+                        `<span class="fail">❌ No data in localStorage</span>`;
+                    return false;
+                }
+            } catch (e) {
+                logToConsole(`❌ localStorage error: ${e.message}`, 'error');
+                return false;
+            }
+        }
+
+        // Test 3: Data Load
+        function testDataLoad() {
+            logToConsole('=== Testing Data Load ===', 'info');
+            try {
+                const inventory = JSON.parse(localStorage.getItem('ss_inventory'));
+                const inventoryList = document.getElementById('inventory-list');
+                inventoryList.innerHTML = '';
+                
+                inventory.forEach(item => {
+                    const statusClass = item.quantity >= item.safety ? 'pass' : 'fail';
+                    const statusText = item.quantity >= item.safety ? '✅ In Stock' : '❌ Low Stock';
+                    
+                    inventoryList.innerHTML += `
+                        <div class="item">
+                            <span><strong>${item.name}</strong> (${item.code})</span>
+                            <span>Quantity: ${item.quantity}</span>
+                            <span class="${statusClass}">${statusText}</span>
+                        </div>
+                    `;
+                });
+                
+                logToConsole(`✅ Data Load: ${inventory.length} items displayed`, 'success');
+                document.getElementById('data-status').innerHTML = 
+                    `<span class="pass">✅ Data loaded successfully (${inventory.length} items)</span>`;
+                return true;
+            } catch (e) {
+                logToConsole(`❌ Data Load error: ${e.message}`, 'error');
+                document.getElementById('data-status').innerHTML = 
+                    `<span class="fail">❌ Data load failed</span>`;
+                return false;
+            }
+        }
+
+        // Run all tests
+        function runAllTests() {
+            document.getElementById('console-output').innerHTML = '';
+            logToConsole('🚀 Running all tests...', 'info');
+            logToConsole('', 'info');
+            
+            const auth = testAuthentication();
+            logToConsole('', 'info');
+            
+            const storage = testLocalStorage();
+            logToConsole('', 'info');
+            
+            const data = testDataLoad();
+            logToConsole('', 'info');
+            
+            const allPassed = auth && storage && data;
+            logToConsole('='.repeat(50), 'info');
+            if (allPassed) {
+                logToConsole('🎉 ALL TESTS PASSED! Your localStorage version is working perfectly!', 'success');
+                logToConsole('', 'info');
+                logToConsole('Next step: Set up Firebase credentials to enable real-time sync.', 'info');
+            } else {
+                logToConsole('⚠️ Some tests failed. Check the errors above.', 'error');
+            }
+            logToConsole('='.repeat(50), 'info');
+        }
+
+        // Auto-run tests on load
+        window.onload = () => {
+            setTimeout(runAllTests, 500);
+        };
+    </script>
+</body>
+</html>

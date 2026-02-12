@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSense | Dashboard (SQLite)</title>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Dashboard Styles -->
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <header class="navbar">
+        <div class="nav-brand">
+            <h1>📦 StockSense</h1>
+            <span class="version-badge">SQLite Edition</span>
+        </div>
+        <div class="nav-actions">
+            <!-- User Display -->
+            <div class="user-display">
+                <span id="user-name">Loading...</span>
+                <span id="user-role" class="user-role-badge">-</span>
+            </div>
+
+            <!-- Theme Toggle -->
+            <label class="theme-toggle">
+                <input type="checkbox" id="theme-toggle">
+                <span class="slider"></span>
+            </label>
+
+            <!-- Logout -->
+            <button class="btn-logout" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tabs">
+        <div class="nav-item active" onclick="switchTab('tracker', this)">
+            <i class="fas fa-exclamation-triangle"></i> Stock Alerts
+        </div>
+        <div class="nav-item" onclick="switchTab('inventory', this)">
+            <i class="fas fa-box"></i> Full Inventory
+        </div>
+        <div class="nav-item" onclick="switchTab('history', this)">
+            <i class="fas fa-history"></i> Transaction History
+        </div>
+    </nav>
+
+    <!-- SECTION 1: Stock Alerts (Low Stock Tracker) -->
+    <section id="view-tracker" class="view-section" style="display:block;">
+        <div class="section-header">
+            <h2>⚠️ Stock Alerts</h2>
+            <p class="section-subtitle">Items below minimum threshold</p>
+        </div>
+        <div id="tracker-grid" class="tracker-grid">
+            <!-- Low stock items will be rendered here -->
+        </div>
+    </section>
+
+    <!-- SECTION 2: Full Inventory -->
+    <section id="view-inventory" class="view-section" style="display:none;">
+        <div class="section-header">
+            <div>
+                <h2>📦 Full Inventory</h2>
+                <p class="section-subtitle">All items in warehouse</p>
+            </div>
+            <div class="header-actions">
+                <input 
+                    type="text" 
+                    id="search-box" 
+                    placeholder="🔍 Search items..." 
+                    onkeyup="handleSearch(this.value)"
+                >
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table class="inventory-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Code</th>
+                        <th>Vendor</th>
+                        <th>Stock</th>
+                        <th>Min. Threshold</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Inventory rows will be rendered here -->
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- SECTION 3: Transaction History -->
+    <section id="view-history" class="view-section" style="display:none;">
+        <div class="section-header">
+            <h2>📜 Transaction History</h2>
+            <p class="section-subtitle">
+                <span class="info-badge">🔒 Admin Only</span>
+                Immutable audit trail
+            </p>
+        </div>
+
+        <div class="table-container">
+            <table class="inventory-table" id="history-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Item</th>
+                        <th>Actor</th>
+                        <th>Change</th>
+                        <th>Stock Level</th>
+                        <th>Destination</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Transaction history will be rendered here -->
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- MODAL: Transaction Form -->
+    <div id="transModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeTransModal()">&times;</span>
+            <h2 id="modal-title">Stock Transaction</h2>
+            
+            <p style="margin: 1rem 0; color: #64748b;">
+                Item: <strong id="modal-item-display">-</strong>
+            </p>
+
+            <form id="transForm">
+                <div class="form-group">
+                    <label>Quantity:</label>
+                    <input 
+                        type="number" 
+                        id="quantity" 
+                        min="1" 
+                        required 
+                        placeholder="Enter quantity"
+                        class="form-input"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label>Destination:</label>
+                    <input 
+                        type="text" 
+                        id="destination" 
+                        placeholder="e.g., Production Floor, Bin A-5"
+                        class="form-input"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label>Purpose:</label>
+                    <textarea 
+                        id="purpose" 
+                        placeholder="Reason for transaction"
+                        class="form-input"
+                        rows="3"
+                    ></textarea>
+                </div>
+
+                <button type="submit" class="btn-submit">Submit</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- SQLite Application Logic -->
+    <script src="app-sqlite.js"></script>
+</body>
+</html>

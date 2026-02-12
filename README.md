@@ -1,37 +1,45 @@
 # 🏭 StockSense - Inventory Management System
 
-**Cloud-Native Warehouse Intelligence System**
+**Warehouse Intelligence System with SQLite Backend**
 
-StockSense is a web-based MIS designed to eliminate the 168-hour "Information Lag" in warehouse logistics. Migrated from SQLite to **Firebase Cloud Firestore** for real-time synchronization, it features allocation logic to protect reserved stock, and predictive "Burn Rate" analytics to mitigate stockout risks and optimize capital efficiency.
+StockSense is a web-based MIS designed to eliminate the 168-hour "Information Lag" in warehouse logistics. Built with **SQLite database** and **Node.js backend** for reliable data management, it features allocation logic to protect reserved stock, audit trail functionality, and role-based access control.
 
 ## 🚀 Quick Start
 
-### Local Development (localStorage)
-1. Open `index.html` in browser
-2. Login: `admin` / `admin`
-3. Data stored locally
+### SQLite Backend (Recommended)
+1. Install Node.js and dependencies: `npm install`
+2. Initialize database: `npm run init-db`
+3. Start server: `npm start`
+4. Open browser: `http://localhost:3000/dashboard-sqlite.html`
+5. Login: `admin` / `admin`
 
-### Firebase Cloud (Real-time Sync)
-1. Set up Firebase project (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md))
+### Alternative: Firebase Cloud (Optional)
+1. Set up Firebase project (see [FIREBASE_COMPLETE_GUIDE.md](FIREBASE_COMPLETE_GUIDE.md))
 2. Configure `firebase-config.js` with your credentials
-3. Open `index.html` → Redirects to `dashboard.html`
-4. Real-time sync across all devices! ✨
+3. Open `index.html` → Login → Redirects to `dashboard.html`
 
 ## 📁 Project Structure
 
 ```
 INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 ├── index.html              # Login page
-├── dashboard.html          # Main dashboard (Firebase-enabled)
+├── dashboard-sqlite.html   # Main dashboard (SQLite backend)
+├── server.js              # Express REST API server
+├── database.sql           # SQLite database schema
+├── app-sqlite.js          # Frontend with API calls
+├── package.json           # Node.js dependencies
+├── init-database.js       # Database initialization
 ├── style.css              # Login styles
 ├── dashboard.css          # Dashboard styles
-├── app.js                 # localStorage version (legacy)
-├── firebase-config.js     # Firebase initialization
+├── SQLITE_SETUP.md        # Complete setup guide
+└── README.md              # This file
+
+# Firebase Version (Optional)
+├── dashboard.html         # Firebase dashboard
+├── app-firebase.js        # Firebase logic
+├── firebase-config.js     # Firebase config
 ├── firestore.rules        # Security rules
-├── functions-example.js   # Cloud Functions (Raphael's work)
-├── FIREBASE_SETUP.md      # Complete setup guide
-├── MIGRATION_OPTIONS.md   # Migration strategies
-└── README.md             # This file
+└── FIREBASE_COMPLETE_GUIDE.md  # Firebase setup
 ```
 
 ## 👥 Team Members & Tasks
@@ -49,19 +57,19 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 
 ## 📚 Documentation
 
-- [Firebase Setup Guide](FIREBASE_SETUP.md) - Complete Firebase configuration
-- [Migration Options](MIGRATION_OPTIONS.md) - Choose your migration path
-- [Security Rules](firestore.rules) - Firestore access control
+- [SQLite Setup Guide](SQLITE_SETUP.md) - Complete SQLite setup (start here!)
+- [Firebase Setup Guide](FIREBASE_COMPLETE_GUIDE.md) - Optional Firebase configuration
+- [Architecture Guide](ARCHITECTURE_VISUAL_GUIDE.md) - System architecture
 
 ## 🏗️ Architecture
 
-### Firestore Collections
+### SQLite Tables
 
 1. **inventory** - Item stock levels
-   - Document ID: Item code (e.g., "MCH-001")
+   - Primary Key: code (e.g., "MCH-001")
    - Fields: description, vendor, current_stock, allocated_stock, min_threshold, etc.
 
-2. **transactions** - Audit trail
+2. **transactions** - Immutable audit trail
    - Auto-generated IDs
    - Fields: item_id, actor_id, quantity_change, timestamp, destination, purpose
 
