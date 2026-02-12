@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSense - Login</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="header">
+        <img src="STOCKSENCE LOGO.png" alt="StockSense Logo" class="brand-logo">
+        <p>Inventory Management System</p>
+    </div>
+
+    <div class="login-container">
+        <h2>Welcome</h2>
+        <form id="loginForm">
+            <div class="form-group">
+                <input type="text" id="username" class="input-field" placeholder="Username">
+            </div>
+            <div class="form-group">
+                <input type="password" id="password" class="input-field" placeholder="Password">
+            </div>
+            <div class="form-group">
+                <button type="submit" id="loginBtn" class="login-btn">Login</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const user = document.getElementById('username');
+            const pass = document.getElementById('password');
+            const btn = document.getElementById('loginBtn');
+            
+            // Hardcoded Credentials for Frontend Demo
+            if (user.value === "admin" && pass.value === "admin") {
+                // Set a session flag
+                sessionStorage.setItem("stocksense_logged_in", "true");
+                sessionStorage.setItem("stocksense_user", "admin");
+                window.location.href = "dashboard.html";
+            } else {
+                // Error State
+                user.classList.add('error');
+                user.value = "Wrong Username";
+                pass.classList.add('error');
+                pass.type = "text";
+                pass.value = "Wrong Password";
+                btn.innerText = "Unable to Login";
+                btn.classList.add('error-btn');
+                
+                // Reset logic on focus
+                user.onfocus = function() { 
+                    if(this.value.includes('Wrong')) { this.value = ''; this.classList.remove('error'); }
+                };
+                pass.onfocus = function() { 
+                    if(this.value.includes('Wrong')) { this.value = ''; this.type='password'; this.classList.remove('error'); }
+                };
+            }
+        });
+    </script>
+</body>
+</html>
