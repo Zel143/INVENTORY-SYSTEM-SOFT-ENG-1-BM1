@@ -50,7 +50,11 @@ CREATE TABLE inventory (
     CHECK(current_stock >= 0),
     CHECK(allocated_stock >= 0),
     CHECK(min_threshold >= 0),
-    CHECK(max_ceiling >= min_threshold)
+    CHECK(max_ceiling >= min_threshold),
+    -- ALLOCATION GUARDRAIL: Database-level safety net
+    -- Ensures current_stock can never fall below allocated_stock
+    -- This prevents contract breaches where reserved parts are consumed
+    CHECK(current_stock >= allocated_stock)
 );
 
 -- Insert default inventory items

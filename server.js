@@ -222,6 +222,27 @@ app.put('/api/inventory/:code', requireAuth, (req, res) => {
             return res.status(400).json({ error: 'Insufficient stock' });
         }
 
+        // ======================================
+        // ALLOCATION GUARDRAIL - Hard Constraint
+        // ======================================
+        // Prevent transactions that would breach reserved stock
+        // Business Rule: allocated_stock represents parts reserved for
+        // Maintenance Agreements (MAs) and cannot be used for walk-in repairs
+        if (new_stock < item.allocated_stock) {
+            const available_stock = item.current_stock - item.allocated_stock;
+            return res.status(400).json({
+                error: 'Allocation Breach',
+                message: `Transaction Denied: ${item.allocated_stock} units are reserved for Maintenance Agreements. Only ${available_stock} units available for dispatch.`,
+                details: {
+                    current_stock: item.current_stock,
+                    allocated_stock: item.allocated_stock,
+                    available_for_use: available_stock,
+                    requested_change: quantity_change,
+                    would_result_in: new_stock
+                }
+            });
+        }
+
         // Start transaction
         const updateInventory = db.transaction(() => {
             // Update inventory

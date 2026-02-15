@@ -92,6 +92,12 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         const data = await response.json();
 
         if (!response.ok) {
+            // Preserve detailed error information for allocation breaches
+            if (data.error === 'Allocation Breach' && data.message) {
+                const error = new Error(data.message);
+                error.details = data.details; // Preserve the detailed breakdown
+                throw error;
+            }
             throw new Error(data.error || 'Request failed');
         }
 
@@ -425,7 +431,13 @@ document.getElementById('transForm').addEventListener('submit', async (e) => {
         showSuccess(`Stock updated successfully!`);
 
     } catch (error) {
-        showError(error.message || 'Failed to update stock');
+        // Handle allocation breach with detailed information
+        if (error.message && error.message.includes('Allocation Breach')) {
+            // Parse the error response to get details
+            showError(`⚠️ ALLOCATION GUARDRAIL ACTIVATED\n\n${error.message}\n\nReserved stock cannot be used for non-MA transactions. Please contact your supervisor or use unreserved inventory.`);
+        } else {
+            showError(error.message || 'Failed to update stock');
+        }
         
         // Reset button
         const submitBtn = e.target.querySelector('button[type="submit"]');
