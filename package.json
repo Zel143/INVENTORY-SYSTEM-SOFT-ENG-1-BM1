@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "init-db": "node init-database.js"
+    "init-db": "node init-database.js",
+    "test-guardrail": "node test-allocation-guardrail.js"
   },
   "keywords": ["inventory", "warehouse", "sqlite", "express"],
   "author": "StockSense Team",

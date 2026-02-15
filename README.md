@@ -58,6 +58,7 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 ## 📚 Documentation
 
 - [SQLite Setup Guide](SQLITE_SETUP.md) - Complete SQLite setup (start here!)
+- [Allocation Guardrail](ALLOCATION_GUARDRAIL.md) - **NEW!** Multi-layer allocation protection system
 - [Firebase Setup Guide](FIREBASE_COMPLETE_GUIDE.md) - Optional Firebase configuration
 - [Architecture Guide](ARCHITECTURE_VISUAL_GUIDE.md) - System architecture
 
@@ -84,8 +85,22 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 - ✅ Role-based access control
 - ✅ Immutable audit trail
 - ✅ Low stock alerts
-- ✅ Allocation protection
+- ✅ **Allocation Guardrail** - Multi-layer protection for reserved stock
 - ✅ Dark/Light theme
+
+### 🛡️ Allocation Guardrail (NEW!)
+
+**Three-Layer Defense System:**
+1. **UI Prevention** - Soft check in frontend
+2. **Server Validation** - Hard constraint in API
+3. **Database Constraint** - Ultimate safety net in SQL
+
+Prevents reserved inventory (allocated for Maintenance Agreements) from being accidentally consumed. See [ALLOCATION_GUARDRAIL.md](ALLOCATION_GUARDRAIL.md) for complete documentation.
+
+**Test the Guardrail:**
+```powershell
+npm run test-guardrail
+```
 
 ## 📈 Roadmap
 
