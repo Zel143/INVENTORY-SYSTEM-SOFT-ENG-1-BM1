@@ -5,107 +5,76 @@
 
 const API_URL = 'http://localhost:3000/api';
 
-// Default inventory data (used as fallback)
-const defaultInventory = [
-    { 
-        code: "MCH-001", 
-        description: "Forklift", 
-        vendor: "Toyota", 
-        current_stock: 5, 
-        allocated_stock: 0, 
-        min_threshold: 5, 
-        max_ceiling: 15,
-        date_delivered: "2025-01-15", 
-        warranty_start: "2025-01-15", 
-        warranty_end: "2030-01-01", 
-        storage_location: "Bin-A1", 
-        image: "https://cdn-icons-png.flaticon.com/512/2821/2821867.png" 
-    },
-    { 
-        code: "MCH-002", 
-        description: "Pallet Jack", 
-        vendor: "Uline", 
-        current_stock: 2, 
-        allocated_stock: 0, 
-        min_threshold: 5, 
-        max_ceiling: 10,
-        date_delivered: "2024-05-20", 
-        warranty_start: "2024-05-20", 
-        warranty_end: "2027-05-20", 
-        storage_location: "Bin-B3", 
-        image: "https://cdn-icons-png.flaticon.com/512/3229/3229986.png" 
-    },
-    { 
-        code: "EQP-104", 
-        description: "Conveyor Belt", 
-        vendor: "Bosch", 
-        current_stock: 4, 
-        allocated_stock: 0, 
-        min_threshold: 5, 
-        max_ceiling: 8,
-        date_delivered: "2025-11-15", 
-        warranty_start: "2025-11-15", 
-        warranty_end: "2028-11-15", 
-        storage_location: "Bin-C2", 
-        image: "https://cdn-icons-png.flaticon.com/512/1541/1541484.png" 
-    },
-    { 
-        code: "STR-201", 
-        description: "Shelving Unit", 
-        vendor: "IKEA", 
-        current_stock: 1, 
-        allocated_stock: 0, 
-        min_threshold: 5, 
-        max_ceiling: 20,
-        date_delivered: "2024-06-10", 
-        warranty_start: "2024-06-10", 
-        warranty_end: "2026-06-10", 
-        storage_location: "Bin-D5", 
-        image: "https://cdn-icons-png.flaticon.com/512/3143/3143160.png" 
-    }
-];
-
 // Global state
 let inventoryCache = [];
 let transactionsCache = [];
 let currentUser = null;
 
 // ======================================
-// API HELPER FUNCTIONS
+// NOTIFICATION BANNER (replaces alert)
+// ======================================
+
+function showBanner(message, type = 'error') {
+    const banner = document.getElementById('notification-banner');
+    if (!banner) return;
+    banner.textContent = message;
+    banner.className = `notification-banner ${type}`;
+    banner.style.display = 'block';
+    if (type === 'success') {
+        setTimeout(hideBanner, 4000);
+    }
+}
+
+function hideBanner() {
+    const banner = document.getElementById('notification-banner');
+    if (banner) banner.style.display = 'none';
+}
+
+function showError(message) {
+    console.error('Error:', message);
+    showBanner(message, 'error');
+}
+
+function showSuccess(message) {
+    console.log('Success:', message);
+    showBanner(message, 'success');
+}
+
+// ======================================
+// LOADING STATE HELPER (UAT ID 29)
+// ======================================
+
+function setButtonLoading(btn, isLoading, defaultText = 'Submit') {
+    if (!btn) return;
+    btn.disabled = isLoading;
+    btn.textContent = isLoading ? 'Processing...' : defaultText;
+}
+
+// ======================================
+// API HELPER
 // ======================================
 
 async function apiCall(endpoint, method = 'GET', body = null) {
-    try {
-        const options = {
-            method,
-            credentials: 'include', // Include cookies for session
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        };
+    const options = {
+        method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+    };
+    if (body) options.body = JSON.stringify(body);
 
-        if (body) {
-            options.body = JSON.stringify(body);
+    const response = await fetch(`${API_URL}${endpoint}`, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+        // Preserve allocation breach detail
+        if (data.error === 'Allocation Breach' && data.message) {
+            const err = new Error(data.message);
+            err.details = data.details;
+            throw err;
         }
-
-        const response = await fetch(`${API_URL}${endpoint}`, options);
-        const data = await response.json();
-
-        if (!response.ok) {
-            // Preserve detailed error information for allocation breaches
-            if (data.error === 'Allocation Breach' && data.message) {
-                const error = new Error(data.message);
-                error.details = data.details; // Preserve the detailed breakdown
-                throw error;
-            }
-            throw new Error(data.error || 'Request failed');
-        }
-
-        return data;
-    } catch (error) {
-        console.error(`API Error [${method} ${endpoint}]:`, error);
-        throw error;
+        throw new Error(data.error || `Request failed (${response.status})`);
     }
+    return data;
 }
 
 // ======================================
@@ -121,8 +90,7 @@ async function checkSession() {
             return true;
         }
         return false;
-    } catch (error) {
-        console.error('Session check failed:', error);
+    } catch {
         return false;
     }
 }
@@ -130,38 +98,29 @@ async function checkSession() {
 function updateUserDisplay() {
     if (!currentUser) return;
 
-    const userEmail = document.getElementById('user-email');
-    const userRole = document.getElementById('user-role');
     const userName = document.getElementById('user-name');
+    const userRole = document.getElementById('user-role');
 
-    if (userEmail) userEmail.textContent = currentUser.email;
     if (userName) userName.textContent = currentUser.display_name;
-    
     if (userRole) {
         userRole.textContent = currentUser.role.toUpperCase();
         userRole.className = `user-role-badge role-${currentUser.role}`;
     }
 
-    // Hide admin-only features for staff
+    // Hide Transaction History tab for non-admins
     if (currentUser.role !== 'admin') {
         const historyTab = document.querySelector('[onclick*="history"]');
-        if (historyTab) {
-            historyTab.style.display = 'none';
-        }
+        if (historyTab) historyTab.style.display = 'none';
+    }
+
+    // Show Log New Stock button for admins only
+    const addItemBtn = document.getElementById('add-item-btn');
+    if (addItemBtn) {
+        addItemBtn.style.display = currentUser.role === 'admin' ? '' : 'none';
     }
 }
 
-function getUserRole() {
-    return currentUser?.role || 'staff';
-}
-
-function isAdmin() {
-    return currentUser?.role === 'admin';
-}
-
-function getCurrentUserId() {
-    return currentUser?.id || 'unknown';
-}
+function isAdmin() { return currentUser?.role === 'admin'; }
 
 // ======================================
 // DATA LOADING
@@ -169,39 +128,39 @@ function getCurrentUserId() {
 
 async function loadInventory() {
     try {
-        const data = await apiCall('/inventory');
-        inventoryCache = data;
-        return data;
+        inventoryCache = await apiCall('/inventory');
     } catch (error) {
-        console.error('Failed to load inventory:', error);
-        showError('Failed to load inventory. Using cached data.');
-        return inventoryCache;
+        showError('Failed to load inventory from server.');
     }
+    return inventoryCache;
 }
 
 async function loadLowStock() {
     try {
-        const data = await apiCall('/low-stock');
-        return data;
-    } catch (error) {
-        console.error('Failed to load low stock:', error);
-        return inventoryCache.filter(item => item.current_stock < item.min_threshold);
+        return await apiCall('/low-stock');
+    } catch {
+        return inventoryCache.filter(i => i.current_stock < i.min_threshold);
     }
 }
 
 async function loadTransactions() {
+    if (!isAdmin()) return [];
     try {
-        if (!isAdmin()) {
-            console.log('Transactions view is admin-only');
-            return [];
-        }
-        const data = await apiCall('/transactions?limit=50');
-        transactionsCache = data;
-        return data;
-    } catch (error) {
-        console.error('Failed to load transactions:', error);
+        transactionsCache = await apiCall('/transactions?limit=50');
+        return transactionsCache;
+    } catch {
         return [];
     }
+}
+
+// ======================================
+// FULL REFRESH — called after every mutation
+// Guarantees UI reflects DB state within one round-trip
+// ======================================
+
+async function fetchInventory() {
+    await loadInventory();
+    renderAll();
 }
 
 // ======================================
@@ -209,124 +168,120 @@ async function loadTransactions() {
 // ======================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Check authentication
     const authenticated = await checkSession();
-    
     if (!authenticated) {
         window.location.href = 'index.html';
         return;
     }
 
-    // Load initial data
     await loadInventory();
-    
-    // Render all sections
     renderAll();
     setupTheme();
 
-    // Set up auto-refresh (every 10 seconds)
-    setInterval(async () => {
-        await loadInventory();
-        renderAll();
-    }, 10000);
+    // Register Add Item form handler
+    const addItemForm = document.getElementById('addItemForm');
+    if (addItemForm) addItemForm.addEventListener('submit', handleLogStock);
+
+    // Register transaction form handler
+    const transForm = document.getElementById('transForm');
+    if (transForm) transForm.addEventListener('submit', updateStock);
+
+    // Auto-refresh every 10 seconds
+    setInterval(fetchInventory, 10000);
 });
 
 // ======================================
-// RENDERING FUNCTIONS
+// RENDERING
 // ======================================
 
 function renderAll() {
     renderTracker();
     renderInventory(inventoryCache);
-    if (isAdmin()) {
-        renderHistory();
-    }
+    if (isAdmin()) renderHistory();
 }
 
-// 1. Render Tracker (Low Stock)
 async function renderTracker() {
     const grid = document.getElementById('tracker-grid');
     if (!grid) return;
 
-    const lowStockItems = await loadLowStock();
-    
-    if (lowStockItems.length === 0) {
-        grid.innerHTML = '<p style="color: #27ae60;">✅ All items are above minimum threshold!</p>';
+    const items = await loadLowStock();
+    if (!items.length) {
+        grid.innerHTML = '<p style="color:#27ae60;">✅ All items are above minimum threshold!</p>';
         return;
     }
 
-    grid.innerHTML = lowStockItems.map(item => `
+    grid.innerHTML = items.map(item => `
         <div class="stock-card red-alert">
-            <img src="${item.image}" alt="${item.description}" class="card-img">
+            <img src="${item.image || ''}" alt="${item.description}" class="card-img"
+                 onerror="this.style.display='none'">
             <div class="card-info">
                 <h4>${item.description}</h4>
                 <p class="warning-text">⚠️ LOW STOCK: ${item.current_stock} units</p>
-                <p class="vendor">📍 ${item.storage_location}</p>
+                <p class="vendor">📍 ${item.storage_location || 'N/A'}</p>
                 <p class="vendor">Minimum: ${item.min_threshold}</p>
             </div>
         </div>
     `).join('');
 }
 
-// 2. Render Inventory Table
 function renderInventory(data) {
-    const tbody = document.querySelector('.inventory-table tbody');
+    const tbody = document.querySelector('#view-inventory .inventory-table tbody');
     if (!tbody) return;
 
-    if (data.length === 0) {
+    if (!data.length) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No inventory items found</td></tr>';
         return;
     }
 
     tbody.innerHTML = data.map(item => {
+        const allocated = item.allocated_stock || 0;
+        const available = item.current_stock - allocated;
         const status = item.current_stock < item.min_threshold ? 'out' : 'available';
-        const statusText = status === 'out' ? 'LOW STOCK' : 'Available';
-        
         return `
             <tr>
                 <td class="item-cell">
-                    <img src="${item.image}" class="table-icon" alt="${item.description}">
+                    <img src="${item.image || ''}" class="table-icon" alt="${item.description}"
+                         onerror="this.style.display='none'">
                     <strong>${item.description}</strong>
                 </td>
                 <td>${item.code}</td>
                 <td>${item.vendor || 'N/A'}</td>
-                <td>${item.current_stock}</td>
+                <td>
+                    ${item.current_stock}
+                    <br><small class="avail-sub">Avail: ${available}</small>
+                </td>
                 <td>${item.min_threshold}</td>
                 <td>${item.storage_location || 'N/A'}</td>
-                <td><span class="badge ${status}">${statusText}</span></td>
-                <td>
-                    <button class="btn-edit" onclick="openModal('${item.code}', 'addition')">Add</button>
-                    <button class="btn-dispatch" onclick="openModal('${item.code}', 'dispatch')">Dispatch</button>
+                <td><span class="badge ${status}">${status === 'out' ? 'LOW STOCK' : 'Available'}</span></td>
+                <td class="action-cell">
+                    <button class="btn-edit" onclick="openStockModal('${item.code}', 'addition')">Add</button>
+                    <button class="btn-dispatch" onclick="openStockModal('${item.code}', 'dispatch')">Dispatch</button>
                 </td>
             </tr>
         `;
     }).join('');
 }
 
-// 3. Render History (Admin only)
 async function renderHistory() {
     if (!isAdmin()) return;
-
     const tbody = document.querySelector('#history-table tbody');
     if (!tbody) return;
 
     const transactions = await loadTransactions();
-
-    if (transactions.length === 0) {
+    if (!transactions.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No transaction history</td></tr>';
         return;
     }
 
     tbody.innerHTML = transactions.map(log => {
-        const changeClass = log.quantity_change > 0 ? 'badge available' : 'badge out';
-        const changeText = log.quantity_change > 0 ? `+${log.quantity_change}` : log.quantity_change;
-        
+        const cls = log.quantity_change > 0 ? 'badge available' : 'badge out';
+        const txt = log.quantity_change > 0 ? `+${log.quantity_change}` : log.quantity_change;
         return `
             <tr>
                 <td>${new Date(log.timestamp).toLocaleString()}</td>
                 <td>${log.item_name}</td>
                 <td>${log.actor_name || log.actor_id}</td>
-                <td><span class="${changeClass}">${changeText}</span></td>
+                <td><span class="${cls}">${txt}</span></td>
                 <td>${log.previous_stock} → ${log.new_stock}</td>
                 <td>${log.destination || '-'}</td>
                 <td>${log.purpose || '-'}</td>
@@ -336,201 +291,211 @@ async function renderHistory() {
 }
 
 // ======================================
-// INTERACTIVITY
+// SEARCH & SORT
 // ======================================
 
-// Search
 function handleSearch(query) {
-    query = query.toLowerCase();
-    const filtered = inventoryCache.filter(item => 
-        item.description.toLowerCase().includes(query) || 
-        item.code.toLowerCase().includes(query) ||
-        (item.vendor && item.vendor.toLowerCase().includes(query))
-    );
-    renderInventory(filtered);
+    const q = query.toLowerCase();
+    renderInventory(inventoryCache.filter(item =>
+        item.description.toLowerCase().includes(q) ||
+        item.code.toLowerCase().includes(q) ||
+        (item.vendor && item.vendor.toLowerCase().includes(q))
+    ));
 }
 
-// Column Sorting (UAT ID 25-26)
 let currentSort = { column: null, ascending: true };
 
 function sortTable(column) {
-    // Toggle sort direction if clicking the same column
-    if (currentSort.column === column) {
-        currentSort.ascending = !currentSort.ascending;
-    } else {
-        currentSort.column = column;
-        currentSort.ascending = true;
-    }
+    currentSort.ascending = currentSort.column === column ? !currentSort.ascending : true;
+    currentSort.column = column;
 
-    // Sort the inventory data
-    const sortedData = [...inventoryCache].sort((a, b) => {
-        let aVal = a[column];
-        let bVal = b[column];
-
-        // Handle null/undefined values
-        if (aVal == null) aVal = '';
-        if (bVal == null) bVal = '';
-
-        // Convert to numbers if both are numeric
+    const sorted = [...inventoryCache].sort((a, b) => {
+        let aVal = a[column] ?? '', bVal = b[column] ?? '';
         if (column === 'current_stock' || column === 'min_threshold') {
-            aVal = Number(aVal);
-            bVal = Number(bVal);
+            aVal = Number(aVal); bVal = Number(bVal);
         } else {
-            // Convert to lowercase for string comparison
-            aVal = String(aVal).toLowerCase();
-            bVal = String(bVal).toLowerCase();
+            aVal = String(aVal).toLowerCase(); bVal = String(bVal).toLowerCase();
         }
-
         if (aVal < bVal) return currentSort.ascending ? -1 : 1;
         if (aVal > bVal) return currentSort.ascending ? 1 : -1;
         return 0;
     });
 
-    // Update sort icons
     document.querySelectorAll('.sortable').forEach(th => {
         const icon = th.querySelector('.sort-icon');
-        if (icon) {
-            icon.className = 'fas fa-sort sort-icon';
-        }
+        if (icon) icon.className = 'fas fa-sort sort-icon';
     });
-
-    const activeHeader = document.querySelector(`[data-column=\"${column}\"]`);
-    if (activeHeader) {
-        const icon = activeHeader.querySelector('.sort-icon');
-        if (icon) {
-            icon.className = currentSort.ascending ? 'fas fa-sort-up sort-icon active' : 'fas fa-sort-down sort-icon active';
-        }
+    const active = document.querySelector(`[data-column="${column}"]`);
+    if (active?.querySelector('.sort-icon')) {
+        active.querySelector('.sort-icon').className =
+            currentSort.ascending ? 'fas fa-sort-up sort-icon active' : 'fas fa-sort-down sort-icon active';
     }
 
-    renderInventory(sortedData);
+    renderInventory(sorted);
 }
 
-// Tabs
 function switchTab(tab, el) {
     document.querySelectorAll('.view-section').forEach(s => s.style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    
     document.getElementById(`view-${tab}`).style.display = 'block';
     el.classList.add('active');
 }
 
-// Modal Logic
+// ======================================
+// STOCK TRANSACTION MODAL (Add / Dispatch)
+// ======================================
+
 let currentModalItem = null;
 let currentModalType = null;
 
-function openModal(code, type) {
+function openStockModal(code, type) {
     const item = inventoryCache.find(i => i.code === code);
     if (!item) return;
 
     currentModalItem = item;
     currentModalType = type;
+    hideBanner();
 
-    const modal = document.getElementById('transModal');
-    const title = document.getElementById('modal-title');
-    const itemDisplay = document.getElementById('modal-item-display');
+    const allocated = item.allocated_stock || 0;
+    const available = item.current_stock - allocated;
 
-    title.textContent = type === 'addition' ? 'Add Stock' : 'Dispatch Stock';
-    itemDisplay.textContent = `${item.description} (${item.code})`;
+    document.getElementById('modal-title').textContent =
+        type === 'addition' ? 'Add Stock' : 'Dispatch Stock';
+    document.getElementById('modal-item-display').textContent =
+        `${item.description} (${item.code})`;
 
-    // Reset form
+    const stockInfo = document.getElementById('modal-stock-info');
+    if (stockInfo) {
+        stockInfo.innerHTML = type === 'dispatch'
+            ? `Total: <strong>${item.current_stock}</strong>
+               &nbsp;|&nbsp; Reserved (MA): <strong>${allocated}</strong>
+               &nbsp;|&nbsp; <span class="avail-highlight">Available to Dispatch: <strong>${available}</strong></span>`
+            : `Current Stock: <strong>${item.current_stock}</strong>`;
+    }
+
     document.getElementById('transForm').reset();
-
-    modal.style.display = 'flex';
+    document.getElementById('transModal').style.display = 'flex';
 }
+
+// Backward-compat alias (onclick attributes in rendered HTML use openModal)
+function openModal(code, type) { openStockModal(code, type); }
 
 function closeTransModal() {
     document.getElementById('transModal').style.display = 'none';
+    document.getElementById('transForm').reset();
     currentModalItem = null;
     currentModalType = null;
 }
 
-// Handle Form Submit
-document.getElementById('transForm').addEventListener('submit', async (e) => {
+// updateStock — handles transForm submit (Add / Dispatch existing item)
+async function updateStock(e) {
     e.preventDefault();
-
     if (!currentModalItem) return;
 
     const quantity = parseInt(document.getElementById('quantity').value);
+    if (!quantity || quantity <= 0) { showError('Enter a valid quantity.'); return; }
+
     const destination = document.getElementById('destination').value;
     const purpose = document.getElementById('purpose').value;
+    const submitBtn = e.target.querySelector('button[type="submit"]');
 
-    if (!quantity || quantity <= 0) {
-        showError('Please enter a valid quantity');
-        return;
-    }
-
-    const quantityChange = currentModalType === 'addition' ? quantity : -quantity;
+    setButtonLoading(submitBtn, true);
+    hideBanner();
 
     try {
-        // Show loading
-        const submitBtn = e.target.querySelector('button[type="submit"]');
-        const originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Processing...';
-        submitBtn.disabled = true;
-
-        // Update stock via API
         await apiCall(`/inventory/${currentModalItem.code}`, 'PUT', {
-            quantity_change: quantityChange,
+            quantity_change: currentModalType === 'addition' ? quantity : -quantity,
             transaction_type: currentModalType,
             destination: destination || 'Warehouse',
             purpose: purpose || 'Stock update'
         });
 
-        // Reload inventory
-        await loadInventory();
-        renderAll();
-
-        // Close modal
         closeTransModal();
-        
-        showSuccess(`Stock updated successfully!`);
-
+        await fetchInventory();            // immediate full refresh
+        showSuccess('Stock updated successfully.');
     } catch (error) {
-        // Handle allocation breach with detailed information
-        if (error.message && error.message.includes('Allocation Breach')) {
-            // Parse the error response to get details
-            showError(`⚠️ ALLOCATION GUARDRAIL ACTIVATED\n\n${error.message}\n\nReserved stock cannot be used for non-MA transactions. Please contact your supervisor or use unreserved inventory.`);
-        } else {
-            showError(error.message || 'Failed to update stock');
-        }
-        
-        // Reset button
-        const submitBtn = e.target.querySelector('button[type="submit"]');
-        submitBtn.textContent = 'Submit';
-        submitBtn.disabled = false;
+        const msg = error.message || 'Failed to update stock.';
+        showError(msg.includes('reserved for Maintenance')
+            ? `⚠️ ALLOCATION GUARDRAIL ACTIVATED — ${msg}`
+            : msg);
+        setButtonLoading(submitBtn, false, 'Submit');
     }
-});
+}
+
+// ======================================
+// LOG NEW STOCK MODAL (Admin — new item)
+// ======================================
+
+function openAddItemModal() {
+    if (!isAdmin()) return;
+    hideBanner();
+    document.getElementById('addItemForm').reset();
+    document.getElementById('addItemModal').style.display = 'flex';
+}
+
+function closeAddItemModal() {
+    document.getElementById('addItemModal').style.display = 'none';
+    document.getElementById('addItemForm').reset();
+}
+
+// handleLogStock — handles addItemForm submit (create new inventory item)
+async function handleLogStock(e) {
+    e.preventDefault();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    setButtonLoading(submitBtn, true, 'Add Item');
+    hideBanner();
+
+    const payload = {
+        code:             document.getElementById('new-code').value.trim(),
+        description:      document.getElementById('new-description').value.trim(),
+        vendor:           document.getElementById('new-vendor').value.trim(),
+        current_stock:    parseInt(document.getElementById('new-stock').value) || 0,
+        allocated_stock:  parseInt(document.getElementById('new-allocated').value) || 0,
+        min_threshold:    parseInt(document.getElementById('new-min').value) || 5,
+        max_ceiling:      parseInt(document.getElementById('new-max').value) || 20,
+        date_delivered:   document.getElementById('new-date-delivered').value || null,
+        warranty_start:   document.getElementById('new-warranty-start').value || null,
+        warranty_end:     document.getElementById('new-warranty-end').value || null,
+        storage_location: document.getElementById('new-location').value.trim()
+    };
+
+    if (!payload.code || !payload.description) {
+        showError('Item Code and Description are required.');
+        setButtonLoading(submitBtn, false, 'Add Item');
+        return;
+    }
+
+    try {
+        await apiCall('/inventory', 'POST', payload);
+        closeAddItemModal();
+        await fetchInventory();            // immediate full refresh
+        showSuccess(`"${payload.description}" added to inventory.`);
+    } catch (error) {
+        showError(error.message || 'Failed to add item.');
+        setButtonLoading(submitBtn, false, 'Add Item');
+    }
+}
 
 // ======================================
 // LOGOUT
 // ======================================
 
 async function logout() {
-    try {
-        await apiCall('/logout', 'POST');
-        sessionStorage.clear();
-        window.location.href = 'index.html';
-    } catch (error) {
-        console.error('Logout failed:', error);
-        // Force logout anyway
-        sessionStorage.clear();
-        window.location.href = 'index.html';
-    }
+    try { await apiCall('/logout', 'POST'); } catch { /* ignore network errors on logout */ }
+    window.location.href = 'index.html';
 }
 
 // ======================================
-// THEME TOGGLE
+// THEME
 // ======================================
 
 function setupTheme() {
     const toggle = document.getElementById('theme-toggle');
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    if (toggle) toggle.checked = savedTheme === 'light';
-
+    const saved = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    if (toggle) toggle.checked = saved === 'light';
     if (toggle) {
-        toggle.addEventListener('change', (e) => {
+        toggle.addEventListener('change', e => {
             const theme = e.target.checked ? 'light' : 'dark';
             document.documentElement.setAttribute('data-theme', theme);
             localStorage.setItem('theme', theme);
@@ -539,33 +504,8 @@ function setupTheme() {
 }
 
 // ======================================
-// NOTIFICATIONS
+// FORMATTERS
 // ======================================
 
-function showError(message) {
-    console.error('Error:', message);
-    // You can add a toast notification here
-    alert('❌ ' + message);
-}
-
-function showSuccess(message) {
-    console.log('Success:', message);
-    // You can add a toast notification here
-    alert('✅ ' + message);
-}
-
-// ======================================
-// UTILITY FUNCTIONS
-// ======================================
-
-function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
-}
-
-function formatDateTime(dateString) {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString();
-}
+function formatDate(d) { return d ? new Date(d).toLocaleDateString() : 'N/A'; }
+function formatDateTime(d) { return d ? new Date(d).toLocaleString() : 'N/A'; }
