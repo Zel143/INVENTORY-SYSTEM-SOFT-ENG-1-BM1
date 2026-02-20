@@ -12,6 +12,10 @@
     <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
+    <!-- Notification Banner -->
+    <div id="notification-banner" class="notification-banner" style="display:none;"
+         onclick="hideBanner()"></div>
+
     <!-- Loading Spinner (UAT ID 29) -->
     <div id="loading-spinner" class="loading-overlay" style="display: none;">
         <div class="spinner">
@@ -72,16 +76,19 @@
 
     <!-- SECTION 2: Full Inventory -->
     <section id="view-inventory" class="view-section" style="display:none;">
-        <div class="section-header">
+        <div class="section-header section-header-row">
             <div>
                 <h2>📦 Full Inventory</h2>
                 <p class="section-subtitle">All items in warehouse</p>
             </div>
             <div class="header-actions">
-                <input 
-                    type="text" 
-                    id="search-box" 
-                    placeholder="🔍 Search items..." 
+                <button id="add-item-btn" class="btn-add-item" onclick="openAddItemModal()" style="display:none;">
+                    <i class="fas fa-plus"></i> Log New Stock
+                </button>
+                <input
+                    type="text"
+                    id="search-box"
+                    placeholder="🔍 Search items..."
                     onkeyup="handleSearch(this.value)"
                 >
             </div>
@@ -148,6 +155,9 @@
                 Item: <strong id="modal-item-display">-</strong>
             </p>
 
+            <!-- Available stock info — shows reserved vs available for dispatch -->
+            <div id="modal-stock-info" class="modal-stock-info"></div>
+
             <form id="transForm">
                 <div class="form-group">
                     <label>Quantity:</label>
@@ -182,6 +192,81 @@
                 </div>
 
                 <button type="submit" class="btn-submit">Submit</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Log New Stock (Admin only) -->
+    <div id="addItemModal" class="modal">
+        <div class="modal-content modal-content-wide">
+            <span class="close" onclick="closeAddItemModal()">&times;</span>
+            <h2>Log New Stock</h2>
+            <form id="addItemForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Item Code <span class="required">*</span></label>
+                        <input type="text" id="new-code" class="form-input"
+                               placeholder="e.g., MCH-005" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Vendor</label>
+                        <input type="text" id="new-vendor" class="form-input"
+                               placeholder="Vendor name">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Description <span class="required">*</span></label>
+                    <input type="text" id="new-description" class="form-input"
+                           placeholder="Full item description" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date Delivered</label>
+                        <input type="date" id="new-date-delivered" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Storage Location</label>
+                        <input type="text" id="new-location" class="form-input"
+                               placeholder="e.g., Bin-A1">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Warranty Start</label>
+                        <input type="date" id="new-warranty-start" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Warranty End</label>
+                        <input type="date" id="new-warranty-end" class="form-input">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Starting Stock</label>
+                        <input type="number" id="new-stock" class="form-input" min="0" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Allocated — MA Reserved</label>
+                        <input type="number" id="new-allocated" class="form-input" min="0" value="0">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Min Threshold</label>
+                        <input type="number" id="new-min" class="form-input" min="0" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Ceiling</label>
+                        <input type="number" id="new-max" class="form-input" min="0" value="20">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit">Add Item</button>
             </form>
         </div>
     </div>

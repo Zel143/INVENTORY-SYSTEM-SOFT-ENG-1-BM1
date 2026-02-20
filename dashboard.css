@@ -238,7 +238,10 @@ input:checked + .slider:before {
 }
 
 .header-actions {
-    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 #search-box {
@@ -602,4 +605,236 @@ form {
     .inventory-table {
         font-size: 0.85rem;
     }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .section-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+}
+
+/* ======================================
+   NOTIFICATION BANNER
+   ====================================== */
+@keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+}
+
+.notification-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 1rem 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+    z-index: 9999;
+    cursor: pointer;
+    animation: slideDown 0.3s ease;
+}
+
+.notification-banner.error {
+    background: #c0392b;
+    color: #fff;
+}
+
+.notification-banner.success {
+    background: #27ae60;
+    color: #fff;
+}
+
+/* ======================================
+   MODAL CONTENT PADDING & CLOSE BUTTON
+   ====================================== */
+.modal-content {
+    padding: 1.5rem;
+    position: relative;
+}
+
+.modal-content form {
+    padding: 0;
+}
+
+.modal-content-wide {
+    max-width: 620px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.close {
+    position: absolute;
+    top: 1rem;
+    right: 1.25rem;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--text);
+    cursor: pointer;
+    background: none;
+    border: none;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.close:hover {
+    opacity: 1;
+    color: var(--danger);
+}
+
+/* ======================================
+   FORM COMPONENTS
+   ====================================== */
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--text);
+    transition: border-color 0.2s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.form-group textarea.form-input {
+    resize: vertical;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.required {
+    color: var(--danger);
+    margin-left: 2px;
+}
+
+/* ======================================
+   SECTION HEADER ROW (Inventory)
+   ====================================== */
+.section-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 2rem;
+    gap: 1rem;
+}
+
+/* ======================================
+   BUTTONS: ADD ITEM, SUBMIT, EDIT, DISPATCH
+   ====================================== */
+.btn-add-item {
+    background: var(--success);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.btn-add-item:hover {
+    transform: scale(1.05);
+    background: #219a52;
+}
+
+.btn-submit {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 0.5rem;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+    transform: scale(1.02);
+    background: #2980b9;
+}
+
+.btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-edit {
+    background: var(--success);
+    color: white;
+    border: none;
+    padding: 0.35rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 0.4rem;
+    transition: transform 0.15s;
+}
+
+.btn-edit:hover {
+    transform: scale(1.07);
+    background: #219a52;
+}
+
+.btn-dispatch {
+    background: var(--warning);
+    color: white;
+    border: none;
+    padding: 0.35rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.btn-dispatch:hover {
+    transform: scale(1.07);
+    background: #d68910;
+}
+
+.action-cell {
+    white-space: nowrap;
+}
+
+/* ======================================
+   MODAL STOCK INFO (Dispatch modal)
+   ====================================== */
+.modal-stock-info {
+    background: var(--light);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    color: var(--text);
+}
+
+.avail-highlight {
+    color: var(--danger);
+    font-weight: bold;
+}
+
+.avail-sub {
+    font-size: 0.78rem;
+    color: #7f8c8d;
+    display: block;
 }

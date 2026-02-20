@@ -216,26 +216,30 @@ app.get('/api/low-stock', requireAuth, (req, res) => {
 // POST /api/inventory - Create new item (Admin only)
 app.post('/api/inventory', requireAdmin, (req, res) => {
     try {
-        const { code, description, vendor, current_stock, min_threshold, max_ceiling, 
-                date_delivered, warranty_start, warranty_end, storage_location, image } = req.body;
+        const { code, description, vendor, current_stock, allocated_stock, min_threshold,
+                max_ceiling, date_delivered, warranty_start, warranty_end, storage_location,
+                image } = req.body;
 
         if (!code || !description) {
             return res.status(400).json({ error: 'Code and description required' });
         }
 
         const stmt = db.prepare(`
-            INSERT INTO inventory (code, description, vendor, current_stock, allocated_stock, 
-                                  min_threshold, max_ceiling, date_delivered, warranty_start, 
+            INSERT INTO inventory (code, description, vendor, current_stock, allocated_stock,
+                                  min_threshold, max_ceiling, date_delivered, warranty_start,
                                   warranty_end, storage_location, image)
-            VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        stmt.run(code, description, vendor, current_stock || 0, min_threshold || 5, 
-                max_ceiling || 20, date_delivered, warranty_start, warranty_end, 
-                storage_location, image);
+        stmt.run(code, description, vendor, current_stock || 0, allocated_stock || 0,
+                min_threshold || 5, max_ceiling || 20, date_delivered, warranty_start,
+                warranty_end, storage_location, image);
 
         res.json({ success: true, code });
     } catch (error) {
+        if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || (error.message && error.message.includes('UNIQUE'))) {
+            return res.status(400).json({ error: `Item code "${req.body.code}" already exists.` });
+        }
         console.error('Create item error:', error);
         res.status(500).json({ error: 'Failed to create item' });
     }

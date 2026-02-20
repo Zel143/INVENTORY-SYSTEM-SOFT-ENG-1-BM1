@@ -37,7 +37,7 @@
         document.getElementById('togglePassword').addEventListener('click', function() {
             const passwordField = document.getElementById('password');
             const eyeIcon = document.getElementById('eyeIcon');
-            
+
             if (passwordField.type === 'password') {
                 passwordField.type = 'text';
                 eyeIcon.classList.remove('fa-eye');
@@ -49,48 +49,49 @@
             }
         });
 
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
+
             const user = document.getElementById('username');
             const pass = document.getElementById('password');
             const btn = document.getElementById('loginBtn');
-            
-            // Hardcoded Credentials for Demo
-            // In production, replace with proper authentication
-            if (user.value === "admin" && pass.value === "admin") {
-                // Set admin session with role
-                sessionStorage.setItem("stocksense_logged_in", "true");
-                sessionStorage.setItem("stocksense_user", "admin@stocksense.com");
-                sessionStorage.setItem("stocksense_user_id", "admin_001");
-                sessionStorage.setItem("stocksense_role", "admin");
-                sessionStorage.setItem("stocksense_display_name", "System Administrator");
-                window.location.href = "dashboard-sqlite.html";
-            } else if (user.value === "staff" && pass.value === "staff") {
-                // Set staff session with limited role
-                sessionStorage.setItem("stocksense_logged_in", "true");
-                sessionStorage.setItem("stocksense_user", "staff@stocksense.com");
-                sessionStorage.setItem("stocksense_user_id", "staff_001");
-                sessionStorage.setItem("stocksense_role", "staff");
-                sessionStorage.setItem("stocksense_display_name", "Warehouse Staff");
-                window.location.href = "dashboard-sqlite.html";
-            } else {
-                // Error State
-                user.classList.add('error');
-                user.value = "Wrong Username";
-                pass.classList.add('error');
-                pass.type = "text";
-                pass.value = "Wrong Password";
-                btn.innerText = "Unable to Login";
-                btn.classList.add('error-btn');
-                
-                // Reset logic on focus
-                user.onfocus = function() { 
-                    if(this.value.includes('Wrong')) { this.value = ''; this.classList.remove('error'); }
-                };
-                pass.onfocus = function() { 
-                    if(this.value.includes('Wrong')) { this.value = ''; this.type='password'; this.classList.remove('error'); }
-                };
+
+            btn.textContent = 'Logging in...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username: user.value, password: pass.value })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    window.location.href = 'dashboard-sqlite.html';
+                } else {
+                    // Error State
+                    user.classList.add('error');
+                    user.value = 'Wrong Username';
+                    pass.classList.add('error');
+                    pass.type = 'text';
+                    pass.value = data.error || 'Wrong Password';
+                    btn.textContent = 'Unable to Login';
+                    btn.classList.add('error-btn');
+                    btn.disabled = false;
+
+                    user.onfocus = function() {
+                        if (this.value.includes('Wrong')) { this.value = ''; this.classList.remove('error'); }
+                    };
+                    pass.onfocus = function() {
+                        if (this.value.includes('Wrong')) { this.value = ''; this.type = 'password'; this.classList.remove('error'); }
+                    };
+                }
+            } catch (error) {
+                btn.textContent = 'Connection Error — Is the server running?';
+                btn.disabled = false;
             }
         });
     </script>
