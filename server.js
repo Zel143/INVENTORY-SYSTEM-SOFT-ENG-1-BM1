@@ -35,7 +35,12 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(__dirname)); // Serve HTML files
 
-// Session management
+// Failed login attempt tracking (UAT ID 20)
+const loginAttempts = new Map(); // Format: { username: { count, lastAttempt } }
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+
+// Session management (UAT ID 17: 2-hour session expiration)
 app.use(session({
     secret: 'stocksense-secret-key-2026',
     resave: false,
@@ -43,7 +48,7 @@ app.use(session({
     cookie: { 
         secure: false, // Set to true in production with HTTPS
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 2 * 60 * 60 * 1000 // 2 hours (UAT ID 17)
     }
 }));
 
@@ -77,25 +82,61 @@ app.post('/api/login', (req, res) => {
             return res.status(400).json({ error: 'Username and password required' });
         }
 
+        // Check for account lockout (UAT ID 20)
+        const attempts = loginAttempts.get(username);
+        if (attempts) {
+            const timeSinceLastAttempt = Date.now() - attempts.lastAttempt;
+            if (attempts.count >= MAX_LOGIN_ATTEMPTS && timeSinceLastAttempt < LOCKOUT_DURATION) {
+                const remainingTime = Math.ceil((LOCKOUT_DURATION - timeSinceLastAttempt) / 60000);
+                return res.status(429).json({ 
+                    error: `Account locked. Too many failed attempts. Try again in ${remainingTime} minutes.` 
+                });
+            }
+            // Reset if lockout period expired
+            if (timeSinceLastAttempt >= LOCKOUT_DURATION) {
+                loginAttempts.delete(username);
+            }
+        }
+
         // Query user (in production, use proper password hashing)
         const user = db.prepare('SELECT * FROM users WHERE username = ? AND password_hash = ?')
             .get(username, password);
 
         if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            // Increment failed attempt counter (UAT ID 20)
+            const currentAttempts = loginAttempts.get(username) || { count: 0, lastAttempt: 0 };
+            loginAttempts.set(username, {
+                count: currentAttempts.count + 1,
+                lastAttempt: Date.now()
+            });
+            
+            const attemptsLeft = MAX_LOGIN_ATTEMPTS - (currentAttempts.count + 1);
+            if (attemptsLeft > 0) {
+                return res.status(401).json({ 
+                    error: `Invalid credentials. ${attemptsLeft} attempts remaining.` 
+                });
+            } else {
+                return res.status(429).json({ 
+                    error: 'Account locked. Too many failed attempts. Try again in 15 minutes.' 
+                });
+            }
         }
+
+        // Clear failed attempts on successful login
+        loginAttempts.delete(username);
 
         // Update last login
         db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?')
             .run(user.id);
 
-        // Set session
+        // Set session with login timestamp (UAT ID 17)
         req.session.user = {
             id: user.id,
             email: user.email,
             username: user.username,
             role: user.role,
-            display_name: user.display_name
+            display_name: user.display_name,
+            loginTime: Date.now()
         };
 
         res.json({ 

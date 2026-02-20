@@ -26,3 +26,10 @@ body::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; he
 }
 .login-btn:hover { background: #425063; }
 .login-btn.error-btn { background: #344050; color: #ff6b6b; border: 1px solid #ff6b6b; }
+.password-toggle {
+    position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: rgba(255, 255, 255, 0.7);
+    cursor: pointer; font-size: 1.1rem; padding: 0; width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center; transition: 0.3s;
+}
+.password-toggle:hover { color: white; }
