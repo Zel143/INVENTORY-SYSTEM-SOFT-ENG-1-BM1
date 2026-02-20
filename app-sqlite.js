@@ -349,7 +349,7 @@ async function renderHistory() {
         
         return `
             <tr>
-                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td>${new Date(log.timestamp).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</td>
                 <td>${log.item_name}</td>
                 <td>${log.actor_name || log.actor_id}</td>
                 <td><span class="${changeClass}">${changeText}</span></td>
@@ -575,13 +575,13 @@ function showSuccess(message) {
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' });
 }
 
 function formatDateTime(dateString) {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    return date.toLocaleString();
+    return date.toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
 }
 
 // ======================================

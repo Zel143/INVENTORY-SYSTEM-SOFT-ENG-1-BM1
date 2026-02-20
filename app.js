@@ -183,7 +183,7 @@ document.getElementById('transForm').addEventListener('submit', (e) => {
 
         // Add History
         history.push({
-            time: new Date().toLocaleString(),
+            time: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
             user: sessionStorage.getItem("stocksense_user") || "Admin",
             itemName: item.name,
             change: change,
