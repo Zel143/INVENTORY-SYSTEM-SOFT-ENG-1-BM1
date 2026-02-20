@@ -29,32 +29,43 @@
     </div>
 
     <script>
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             const user = document.getElementById('username');
             const pass = document.getElementById('password');
             const btn = document.getElementById('loginBtn');
             
-            // Hardcoded Credentials for Demo
-            // In production, replace with proper authentication
-            if (user.value === "admin" && pass.value === "admin") {
-                // Set admin session with role
-                sessionStorage.setItem("stocksense_logged_in", "true");
-                sessionStorage.setItem("stocksense_user", "admin@stocksense.com");
-                sessionStorage.setItem("stocksense_user_id", "admin_001");
-                sessionStorage.setItem("stocksense_role", "admin");
-                sessionStorage.setItem("stocksense_display_name", "System Administrator");
-                window.location.href = "dashboard-sqlite.html";
-            } else if (user.value === "staff" && pass.value === "staff") {
-                // Set staff session with limited role
-                sessionStorage.setItem("stocksense_logged_in", "true");
-                sessionStorage.setItem("stocksense_user", "staff@stocksense.com");
-                sessionStorage.setItem("stocksense_user_id", "staff_001");
-                sessionStorage.setItem("stocksense_role", "staff");
-                sessionStorage.setItem("stocksense_display_name", "Warehouse Staff");
-                window.location.href = "dashboard-sqlite.html";
-            } else {
+            // Disable button during login
+            btn.disabled = true;
+            btn.innerText = 'Logging in...';
+            
+            try {
+                // Call backend API for authentication
+                const response = await fetch('http://localhost:3000/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include', // Important: Include cookies for session
+                    body: JSON.stringify({
+                        username: user.value,
+                        password: pass.value
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Login successful - redirect to dashboard
+                    window.location.href = 'dashboard-sqlite.html';
+                } else {
+                    // Login failed - show error
+                    throw new Error(data.error || 'Login failed');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                
                 // Error State
                 user.classList.add('error');
                 user.value = "Wrong Username";
@@ -63,13 +74,23 @@
                 pass.value = "Wrong Password";
                 btn.innerText = "Unable to Login";
                 btn.classList.add('error-btn');
+                btn.disabled = false;
                 
                 // Reset logic on focus
                 user.onfocus = function() { 
-                    if(this.value.includes('Wrong')) { this.value = ''; this.classList.remove('error'); }
+                    if(this.value.includes('Wrong')) { 
+                        this.value = ''; 
+                        this.classList.remove('error');
+                        btn.innerText = 'Login';
+                        btn.classList.remove('error-btn');
+                    }
                 };
                 pass.onfocus = function() { 
-                    if(this.value.includes('Wrong')) { this.value = ''; this.type='password'; this.classList.remove('error'); }
+                    if(this.value.includes('Wrong')) { 
+                        this.value = ''; 
+                        this.type='password'; 
+                        this.classList.remove('error');
+                    }
                 };
             }
         });

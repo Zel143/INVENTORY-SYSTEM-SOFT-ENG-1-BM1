@@ -29,7 +29,7 @@ console.log('✅ Database connected:', dbPath);
 // MIDDLEWARE
 // ======================================
 app.use(cors({
-    origin: 'http://127.0.0.1:5500', // Allow VS Code Live Server
+    origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://127.0.0.1:5500'], // Allow Express server and Live Server
     credentials: true
 }));
 app.use(express.json());
@@ -204,8 +204,41 @@ app.post('/api/inventory', requireAdmin, (req, res) => {
 app.put('/api/inventory/:code', requireAuth, (req, res) => {
     try {
         const { code } = req.params;
-        const { quantity_change, transaction_type, destination, purpose } = req.body;
+        let { quantity_change, transaction_type, destination, purpose } = req.body;
         const user = req.session.user;
+
+        // ======================================
+        // UAT IDs 42, 45, 70: Server-Side Input Validation
+        // ======================================
+        // Validate quantity_change is a valid integer
+        if (typeof quantity_change !== 'number' || isNaN(quantity_change)) {
+            return res.status(400).json({ error: 'Invalid quantity: must be a number' });
+        }
+
+        // Check if the value is an integer (no decimals)
+        if (!Number.isInteger(quantity_change)) {
+            return res.status(400).json({ error: 'Invalid quantity: must be a whole number (no decimals)' });
+        }
+
+        // Reject zero changes
+        if (quantity_change === 0) {
+            return res.status(400).json({ error: 'Invalid quantity: cannot be zero' });
+        }
+
+        // ======================================
+        // UAT IDs 15, 50, 52: Input Sanitization (XSS/SQL Injection Prevention)
+        // ======================================
+        const sanitizeInput = (input) => {
+            if (!input) return '';
+            return String(input)
+                .replace(/[<>\"']/g, '') // Remove HTML/JS injection chars
+                .replace(/[;\\]/g, '')   // Remove SQL terminators
+                .trim()
+                .substring(0, 500);      // Limit length
+        };
+
+        destination = sanitizeInput(destination);
+        purpose = sanitizeInput(purpose);
 
         // Get current item
         const item = db.prepare('SELECT * FROM inventory WHERE code = ?').get(code);

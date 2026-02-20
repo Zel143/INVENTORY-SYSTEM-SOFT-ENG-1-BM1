@@ -282,6 +282,13 @@ function renderInventory(data) {
         const status = item.current_stock < item.min_threshold ? 'out' : 'available';
         const statusText = status === 'out' ? 'LOW STOCK' : 'Available';
         
+        // UAT ID 75: Calculate available stock (excluding allocated)
+        const availableStock = item.current_stock - item.allocated_stock;
+        const hasAllocated = item.allocated_stock > 0;
+        
+        // Visual warning if available stock is low even when total stock looks okay
+        const availableClass = availableStock <= 0 ? 'text-red' : (availableStock < item.min_threshold ? 'text-yellow' : 'text-green');
+        
         return `
             <tr>
                 <td class="item-cell">
@@ -290,13 +297,32 @@ function renderInventory(data) {
                 </td>
                 <td>${item.code}</td>
                 <td>${item.vendor || 'N/A'}</td>
-                <td>${item.current_stock}</td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span style="font-weight: 600;">${item.current_stock} total</span>
+                        ${hasAllocated ? `
+                            <small style="color: #f59e0b; font-weight: 500;">
+                                🔒 ${item.allocated_stock} allocated
+                            </small>
+                            <small class="${availableClass}" style="font-weight: 600;">
+                                ✓ ${availableStock} available
+                            </small>
+                        ` : `
+                            <small class="${availableClass}">
+                                ${availableStock} available
+                            </small>
+                        `}
+                    </div>
+                </td>
                 <td>${item.min_threshold}</td>
                 <td>${item.storage_location || 'N/A'}</td>
                 <td><span class="badge ${status}">${statusText}</span></td>
                 <td>
                     <button class="btn-edit" onclick="openModal('${item.code}', 'addition')">Add</button>
-                    <button class="btn-dispatch" onclick="openModal('${item.code}', 'dispatch')">Dispatch</button>
+                    <button class="btn-dispatch" onclick="openModal('${item.code}', 'dispatch')" 
+                        ${availableStock <= 0 ? 'disabled title="No available stock"' : ''}>
+                        Dispatch
+                    </button>
                 </td>
             </tr>
         `;
@@ -339,24 +365,38 @@ async function renderHistory() {
 // INTERACTIVITY
 // ======================================
 
-// Search
+// Search (UAT ID 15: Input sanitization)
 function handleSearch(query) {
-    query = query.toLowerCase();
+    // Sanitize search query to prevent XSS
+    const sanitizedQuery = sanitizeInput(query).toLowerCase();
+    
+    if (!sanitizedQuery) {
+        renderInventory(inventoryCache); // Show all if empty
+        return;
+    }
+    
     const filtered = inventoryCache.filter(item => 
-        item.description.toLowerCase().includes(query) || 
-        item.code.toLowerCase().includes(query) ||
-        (item.vendor && item.vendor.toLowerCase().includes(query))
+        item.description.toLowerCase().includes(sanitizedQuery) || 
+        item.code.toLowerCase().includes(sanitizedQuery) ||
+        (item.vendor && item.vendor.toLowerCase().includes(sanitizedQuery))
     );
     renderInventory(filtered);
 }
 
-// Tabs
+// Tabs (UAT ID 28: Reset search on tab switch)
 function switchTab(tab, el) {
     document.querySelectorAll('.view-section').forEach(s => s.style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     
     document.getElementById(`view-${tab}`).style.display = 'block';
     el.classList.add('active');
+    
+    // UAT ID 28: Reset search box when switching tabs
+    const searchBox = document.getElementById('search-box');
+    if (searchBox && tab === 'tracker') {
+        searchBox.value = '';
+        renderInventory(inventoryCache); // Show all items
+    }
 }
 
 // Modal Logic
@@ -395,13 +435,42 @@ document.getElementById('transForm').addEventListener('submit', async (e) => {
 
     if (!currentModalItem) return;
 
-    const quantity = parseInt(document.getElementById('quantity').value);
+    // ======================================
+    // UAT ID 42, 45, 70: Zero-Trust Input Validation
+    // ======================================
+    const quantityInput = document.getElementById('quantity').value;
     const destination = document.getElementById('destination').value;
     const purpose = document.getElementById('purpose').value;
 
-    if (!quantity || quantity <= 0) {
-        showError('Please enter a valid quantity');
+    // Validate quantity is a positive integer (no decimals, negatives, or zero)
+    if (!quantityInput || quantityInput.trim() === '') {
+        showError('⚠️ Quantity is required');
         return;
+    }
+
+    const quantity = parseInt(quantityInput, 10);
+
+    // Reject if:
+    // - Not a valid integer (NaN)
+    // - Negative values (ID 42)
+    // - Zero (ID 45)
+    // - Decimal values (ID 70)
+    if (isNaN(quantity) || quantity <= 0 || quantityInput.includes('.') || quantityInput.includes('-')) {
+        showError('⚠️ Invalid Quantity: Must be a positive whole number (no decimals, negatives, or zero)');
+        return;
+    }
+
+    // UAT ID 15, 50: Sanitize text inputs to prevent XSS/SQL injection
+    const sanitizedDestination = sanitizeInput(destination);
+    const sanitizedPurpose = sanitizeInput(purpose);
+
+    // UAT ID 75: Pre-flight allocation check with visual feedback
+    if (currentModalType === 'dispatch') {
+        const availableStock = currentModalItem.current_stock - currentModalItem.allocated_stock;
+        if (quantity > availableStock) {
+            showError(`⚠️ ALLOCATION GUARDRAIL\n\nRequested: ${quantity} units\nAvailable: ${availableStock} units\nAllocated (Reserved): ${currentModalItem.allocated_stock} units\n\n❌ This transaction would breach reserved stock for Maintenance Agreements.`);
+            return;
+        }
     }
 
     const quantityChange = currentModalType === 'addition' ? quantity : -quantity;
@@ -413,12 +482,12 @@ document.getElementById('transForm').addEventListener('submit', async (e) => {
         submitBtn.textContent = 'Processing...';
         submitBtn.disabled = true;
 
-        // Update stock via API
+        // Update stock via API (using sanitized inputs)
         await apiCall(`/inventory/${currentModalItem.code}`, 'PUT', {
             quantity_change: quantityChange,
             transaction_type: currentModalType,
-            destination: destination || 'Warehouse',
-            purpose: purpose || 'Stock update'
+            destination: sanitizedDestination || 'Warehouse',
+            purpose: sanitizedPurpose || 'Stock update'
         });
 
         // Reload inventory
@@ -513,4 +582,30 @@ function formatDateTime(dateString) {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
     return date.toLocaleString();
+}
+
+// ======================================
+// UAT ID 15, 50, 52: XSS & SQL Injection Protection
+// ======================================
+
+function sanitizeInput(input) {
+    if (!input) return '';
+    
+    // Remove potential XSS vectors
+    return String(input)
+        .replace(/[<>"']/g, '') // Remove HTML/JS injection chars
+        .replace(/[;\\]/g, '')  // Remove SQL statement terminators
+        .trim()
+        .substring(0, 500); // Limit length to prevent buffer overflow
+}
+
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
 }

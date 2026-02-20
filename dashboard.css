@@ -353,6 +353,11 @@ input:checked + .slider:before {
     font-weight: bold;
 }
 
+.text-yellow {
+    color: #f59e0b;
+    font-weight: bold;
+}
+
 .text-red {
     color: var(--danger);
     font-weight: bold;
