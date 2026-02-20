@@ -350,6 +350,61 @@ function handleSearch(query) {
     renderInventory(filtered);
 }
 
+// Column Sorting (UAT ID 25-26)
+let currentSort = { column: null, ascending: true };
+
+function sortTable(column) {
+    // Toggle sort direction if clicking the same column
+    if (currentSort.column === column) {
+        currentSort.ascending = !currentSort.ascending;
+    } else {
+        currentSort.column = column;
+        currentSort.ascending = true;
+    }
+
+    // Sort the inventory data
+    const sortedData = [...inventoryCache].sort((a, b) => {
+        let aVal = a[column];
+        let bVal = b[column];
+
+        // Handle null/undefined values
+        if (aVal == null) aVal = '';
+        if (bVal == null) bVal = '';
+
+        // Convert to numbers if both are numeric
+        if (column === 'current_stock' || column === 'min_threshold') {
+            aVal = Number(aVal);
+            bVal = Number(bVal);
+        } else {
+            // Convert to lowercase for string comparison
+            aVal = String(aVal).toLowerCase();
+            bVal = String(bVal).toLowerCase();
+        }
+
+        if (aVal < bVal) return currentSort.ascending ? -1 : 1;
+        if (aVal > bVal) return currentSort.ascending ? 1 : -1;
+        return 0;
+    });
+
+    // Update sort icons
+    document.querySelectorAll('.sortable').forEach(th => {
+        const icon = th.querySelector('.sort-icon');
+        if (icon) {
+            icon.className = 'fas fa-sort sort-icon';
+        }
+    });
+
+    const activeHeader = document.querySelector(`[data-column=\"${column}\"]`);
+    if (activeHeader) {
+        const icon = activeHeader.querySelector('.sort-icon');
+        if (icon) {
+            icon.className = currentSort.ascending ? 'fas fa-sort-up sort-icon active' : 'fas fa-sort-down sort-icon active';
+        }
+    }
+
+    renderInventory(sortedData);
+}
+
 // Tabs
 function switchTab(tab, el) {
     document.querySelectorAll('.view-section').forEach(s => s.style.display = 'none');

@@ -12,6 +12,14 @@
     <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
+    <!-- Loading Spinner (UAT ID 29) -->
+    <div id="loading-spinner" class="loading-overlay" style="display: none;">
+        <div class="spinner">
+            <i class="fas fa-circle-notch fa-spin"></i>
+            <p>Loading...</p>
+        </div>
+    </div>
+
     <!-- Navigation Bar -->
     <header class="navbar">
         <div class="nav-brand">
@@ -83,12 +91,12 @@
             <table class="inventory-table">
                 <thead>
                     <tr>
-                        <th>Item</th>
-                        <th>Code</th>
-                        <th>Vendor</th>
-                        <th>Stock</th>
-                        <th>Min. Threshold</th>
-                        <th>Location</th>
+                        <th class="sortable" data-column="description" onclick="sortTable('description')">Item <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-column="code" onclick="sortTable('code')">Code <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-column="vendor" onclick="sortTable('vendor')">Vendor <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-column="current_stock" onclick="sortTable('current_stock')">Stock <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-column="min_threshold" onclick="sortTable('min_threshold')">Min. Threshold <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-column="storage_location" onclick="sortTable('storage_location')">Location <i class="fas fa-sort sort-icon"></i></th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
