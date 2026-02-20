@@ -358,7 +358,7 @@ input:checked + .slider:before {
     font-weight: bold;
 }
 
-/* Action Buttons */
+/* Action Buttons (table row) */
 .btn-action {
     width: 40px;
     height: 40px;
@@ -388,6 +388,43 @@ input:checked + .slider:before {
     background: var(--danger);
 }
 
+/* Inventory table action buttons */
+.btn-add-stock,
+.btn-dispatch-stock {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 0 0.2rem;
+    transition: transform 0.15s, box-shadow 0.15s;
+    color: white;
+}
+
+.btn-add-stock {
+    background: var(--success);
+}
+
+.btn-add-stock:hover {
+    background: #219a52;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(39,174,96,0.4);
+}
+
+.btn-dispatch-stock {
+    background: #e67e22;
+}
+
+.btn-dispatch-stock:hover {
+    background: #ca6f1e;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(230,126,34,0.4);
+}
+
 /* Modal */
 .modal {
     display: none;
@@ -408,6 +445,70 @@ input:checked + .slider:before {
     width: 90%;
     max-width: 500px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    overflow: hidden;
+}
+
+/* Color-coded modal banner */
+.modal-banner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    background: var(--success);
+    color: white;
+    position: relative;
+}
+
+.modal-banner.dispatch-mode {
+    background: #e67e22;
+}
+
+.modal-banner-icon {
+    font-size: 2rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.modal-banner-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.modal-banner-text h2 {
+    font-size: 1.3rem;
+    margin: 0 0 0.25rem;
+    color: white;
+}
+
+.modal-subtitle {
+    font-size: 0.9rem;
+    margin: 0;
+    color: rgba(255,255,255,0.85);
+    word-break: break-word;
+}
+
+.modal-subtitle strong {
+    color: white;
+}
+
+.modal-close-btn {
+    background: rgba(255,255,255,0.25);
+    border: none;
+    color: white;
+    font-size: 1rem;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+
+.modal-close-btn:hover {
+    background: rgba(255,255,255,0.45);
 }
 
 .modal-header {
@@ -432,6 +533,10 @@ input:checked + .slider:before {
 }
 
 .modal-close:hover {
+    color: var(--danger);
+}
+
+.required-star {
     color: var(--danger);
 }
 
@@ -508,6 +613,40 @@ form {
 
 .btn-secondary:hover {
     background: #7f8c8d;
+}
+
+.btn-confirm-add {
+    background: var(--success) !important;
+}
+
+.btn-confirm-add:hover {
+    background: #219a52 !important;
+}
+
+.btn-confirm-dispatch {
+    background: #e67e22 !important;
+}
+
+.btn-confirm-dispatch:hover {
+    background: #ca6f1e !important;
+}
+
+/* Textarea inside form-group */
+.form-group textarea.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+    font-family: inherit;
+}
+
+.form-group textarea.form-input:focus {
+    outline: none;
+    border-color: var(--primary);
 }
 
 /* Empty States */

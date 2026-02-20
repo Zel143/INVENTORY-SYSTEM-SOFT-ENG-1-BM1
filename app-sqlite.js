@@ -295,8 +295,12 @@ function renderInventory(data) {
                 <td>${item.storage_location || 'N/A'}</td>
                 <td><span class="badge ${status}">${statusText}</span></td>
                 <td>
-                    <button class="btn-edit" onclick="openModal('${item.code}', 'addition')">Add</button>
-                    <button class="btn-dispatch" onclick="openModal('${item.code}', 'dispatch')">Dispatch</button>
+                    <button class="btn-add-stock" onclick="openModal('${item.code}', 'addition')" title="Add stock to inventory">
+                        ➕ Add
+                    </button>
+                    <button class="btn-dispatch-stock" onclick="openModal('${item.code}', 'dispatch')" title="Dispatch (remove) stock from inventory">
+                        📤 Dispatch
+                    </button>
                 </td>
             </tr>
         `;
@@ -371,10 +375,41 @@ function openModal(code, type) {
     currentModalType = type;
 
     const modal = document.getElementById('transModal');
+    const banner = document.getElementById('modal-header-banner');
     const title = document.getElementById('modal-title');
+    const bannerIcon = document.getElementById('modal-banner-icon');
     const itemDisplay = document.getElementById('modal-item-display');
+    const qtyHint = document.getElementById('qty-hint');
+    const submitBtn = document.getElementById('modal-submit-btn');
+    const sourceGroup = document.getElementById('source-group');
+    const destinationGroup = document.getElementById('destination-group');
 
-    title.textContent = type === 'addition' ? 'Add Stock' : 'Dispatch Stock';
+    if (type === 'addition') {
+        // Green banner for Add Stock
+        banner.className = 'modal-banner';
+        bannerIcon.textContent = '➕';
+        title.textContent = 'Add Stock';
+        qtyHint.textContent = `Current stock: ${item.current_stock} | Max ceiling: ${item.max_ceiling || 'N/A'}`;
+        submitBtn.textContent = '✔ Confirm Add';
+        submitBtn.className = 'btn-primary btn-confirm-add';
+        // Show Source, hide Destination
+        sourceGroup.style.display = 'block';
+        destinationGroup.style.display = 'none';
+        document.getElementById('destination').required = false;
+    } else {
+        // Orange banner for Dispatch Stock
+        banner.className = 'modal-banner dispatch-mode';
+        bannerIcon.textContent = '📤';
+        title.textContent = 'Dispatch Stock';
+        qtyHint.textContent = `Available stock: ${item.current_stock} | Min threshold: ${item.min_threshold}`;
+        submitBtn.textContent = '✔ Confirm Dispatch';
+        submitBtn.className = 'btn-primary btn-confirm-dispatch';
+        // Show Destination, hide Source
+        sourceGroup.style.display = 'none';
+        destinationGroup.style.display = 'block';
+        document.getElementById('destination').required = true;
+    }
+
     itemDisplay.textContent = `${item.description} (${item.code})`;
 
     // Reset form
@@ -397,6 +432,7 @@ document.getElementById('transForm').addEventListener('submit', async (e) => {
 
     const quantity = parseInt(document.getElementById('quantity').value);
     const destination = document.getElementById('destination').value;
+    const source = document.getElementById('source').value;
     const purpose = document.getElementById('purpose').value;
 
     if (!quantity || quantity <= 0) {
@@ -408,7 +444,7 @@ document.getElementById('transForm').addEventListener('submit', async (e) => {
 
     try {
         // Show loading
-        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const submitBtn = document.getElementById('modal-submit-btn');
         const originalText = submitBtn.textContent;
         submitBtn.textContent = 'Processing...';
         submitBtn.disabled = true;
@@ -417,7 +453,7 @@ document.getElementById('transForm').addEventListener('submit', async (e) => {
         await apiCall(`/inventory/${currentModalItem.code}`, 'PUT', {
             quantity_change: quantityChange,
             transaction_type: currentModalType,
-            destination: destination || 'Warehouse',
+            destination: currentModalType === 'addition' ? (source || 'Direct Addition') : destination,
             purpose: purpose || 'Stock update'
         });
 
@@ -440,8 +476,8 @@ document.getElementById('transForm').addEventListener('submit', async (e) => {
         }
         
         // Reset button
-        const submitBtn = e.target.querySelector('button[type="submit"]');
-        submitBtn.textContent = 'Submit';
+        const submitBtn = document.getElementById('modal-submit-btn');
+        submitBtn.textContent = currentModalType === 'addition' ? '✔ Confirm Add' : '✔ Confirm Dispatch';
         submitBtn.disabled = false;
     }
 });
