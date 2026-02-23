@@ -156,7 +156,7 @@ SELECT
     storage_location,
     image
 FROM inventory
-WHERE current_stock < min_threshold
+WHERE current_stock <= min_threshold
 ORDER BY (min_threshold - current_stock) DESC;
 
 -- View: Recent transactions with user details

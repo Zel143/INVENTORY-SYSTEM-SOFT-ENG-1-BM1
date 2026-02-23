@@ -395,6 +395,16 @@ input:checked + .slider:before {
     color: #721c24;
 }
 
+.badge.overstock {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.badge.expired {
+    background: #6c757d;
+    color: #fff;
+}
+
 .qty-display {
     font-size: 1.5rem;
     font-weight: bold;

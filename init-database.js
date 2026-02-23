@@ -26,20 +26,14 @@ db.pragma('foreign_keys = ON');
 console.log('📄 Reading schema file...');
 const schema = fs.readFileSync(sqlPath, 'utf8');
 
-// Execute schema (split by semicolons and filter empty statements)
+// Execute entire schema in one call so trigger bodies (which contain
+// semicolons) are parsed correctly by SQLite instead of being split.
 console.log('⚙️  Creating tables...');
-const statements = schema
-    .split(';')
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-
-for (const statement of statements) {
-    try {
-        db.exec(statement);
-    } catch (error) {
-        console.error('Error executing statement:', error.message);
-        console.error('Statement:', statement.substring(0, 100) + '...');
-    }
+try {
+    db.exec(schema);
+} catch (error) {
+    console.error('Schema execution failed:', error.message);
+    process.exit(1);
 }
 
 // Verify tables were created

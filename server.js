@@ -224,6 +224,11 @@ app.post('/api/inventory', requireAdmin, (req, res) => {
             return res.status(400).json({ error: 'Code and description required' });
         }
 
+        // Warranty date order validation
+        if (warranty_start && warranty_end && warranty_end < warranty_start) {
+            return res.status(400).json({ error: 'Warranty end date must be after warranty start date' });
+        }
+
         const stmt = db.prepare(`
             INSERT INTO inventory (code, description, vendor, current_stock, allocated_stock,
                                   min_threshold, max_ceiling, date_delivered, warranty_start,
@@ -251,6 +256,16 @@ app.put('/api/inventory/:code', requireAuth, (req, res) => {
         const { code } = req.params;
         const { quantity_change, transaction_type, destination, purpose } = req.body;
         const user = req.session.user;
+
+        // Reject zero or missing quantity
+        if (quantity_change === 0 || quantity_change === undefined || quantity_change === null) {
+            return res.status(400).json({ error: 'Quantity must be non-zero' });
+        }
+
+        // Require destination for dispatches
+        if (transaction_type === 'dispatch' && (!destination || !destination.trim())) {
+            return res.status(400).json({ error: 'Destination is required for dispatch' });
+        }
 
         // Get current item
         const item = db.prepare('SELECT * FROM inventory WHERE code = ?').get(code);
@@ -432,7 +447,7 @@ app.get('/api/stats', requireAuth, (req, res) => {
             total_items: db.prepare('SELECT COUNT(*) as count FROM inventory').get().count,
             low_stock_count: db.prepare('SELECT COUNT(*) as count FROM low_stock_items').get().count,
             total_stock: db.prepare('SELECT SUM(current_stock) as total FROM inventory').get().total,
-            recent_transactions: db.prepare('SELECT COUNT(*) as count FROM transactions WHERE timestamp > datetime("now", "-7 days")').get().count
+            recent_transactions: db.prepare("SELECT COUNT(*) as count FROM transactions WHERE timestamp > datetime('now', '-7 days')").get().count
         };
 
         res.json(stats);

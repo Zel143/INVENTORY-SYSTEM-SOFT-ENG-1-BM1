@@ -139,7 +139,7 @@ async function loadLowStock() {
     try {
         return await apiCall('/low-stock');
     } catch {
-        return inventoryCache.filter(i => i.current_stock < i.min_threshold);
+        return inventoryCache.filter(i => i.current_stock <= i.min_threshold);
     }
 }
 
@@ -236,7 +236,15 @@ function renderInventory(data) {
     tbody.innerHTML = data.map(item => {
         const allocated = item.allocated_stock || 0;
         const available = item.current_stock - allocated;
-        const status = item.current_stock < item.min_threshold ? 'out' : 'available';
+        const isLowStock = item.current_stock <= item.min_threshold;
+        const isOverstock = item.max_ceiling && item.current_stock > item.max_ceiling;
+        const isExpired = item.warranty_end && new Date(item.warranty_end) < new Date();
+        const status = isLowStock ? 'out' : 'available';
+
+        let badges = `<span class="badge ${status}">${isLowStock ? 'LOW STOCK' : 'Available'}</span>`;
+        if (isOverstock) badges += ' <span class="badge overstock">OVERSTOCK</span>';
+        if (isExpired) badges += ' <span class="badge expired">EXPIRED</span>';
+
         return `
             <tr>
                 <td class="item-cell">
@@ -252,7 +260,7 @@ function renderInventory(data) {
                 </td>
                 <td>${item.min_threshold}</td>
                 <td>${item.storage_location || 'N/A'}</td>
-                <td><span class="badge ${status}">${status === 'out' ? 'LOW STOCK' : 'Available'}</span></td>
+                <td>${badges}</td>
                 <td class="action-cell">
                     <button class="btn-edit" onclick="openStockModal('${item.code}', 'addition')">Add</button>
                     <button class="btn-dispatch" onclick="openStockModal('${item.code}', 'dispatch')">Dispatch</button>
