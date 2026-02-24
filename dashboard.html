@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSense - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <img src="STOCKSENCE LOGO.png" alt="StockSense Logo" class="brand-logo">
+                <h1>StockSense</h1>
+            </div>
+            <div class="header-right">
+                <div class="theme-switch">
+                    <input type="checkbox" id="checkbox">
+                    <label for="checkbox" class="switch"></label>
+                </div>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="nav-item active" onclick="switchTab('tracker', this)">Stock Alerts</button>
+            <button class="nav-item" onclick="switchTab('inventory', this)">Inventory</button>
+            <button class="nav-item" onclick="switchTab('history', this)">Transaction History</button>
+        </nav>
+
+        <main class="main-content">
+            <!-- Stock Alerts View -->
+            <section id="view-tracker" class="view-section">
+                <h2>Stock Alerts</h2>
+                <div id="tracker-grid" class="tracker-grid"></div>
+            </section>
+
+            <!-- Inventory View -->
+            <section id="view-inventory" class="view-section" style="display: none;">
+                <div class="inventory-header">
+                    <h2>Inventory Management</h2>
+                    <div class="search-container">
+                        <input type="text" id="search-input" placeholder="Search items..." onkeyup="handleSearch(this.value)">
+                        <i class="fas fa-search search-icon"></i>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Status</th>
+                                <th>Quantity</th>
+                                <th>Expiry</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-list"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- History View -->
+            <section id="view-history" class="view-section" style="display: none;">
+                <h2>Transaction History</h2>
+                <div class="table-container">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>User</th>
+                                <th>Item</th>
+                                <th>Change</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-list"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Transaction Modal -->
+    <div id="transModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="trans-title">Transaction</h3>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <form id="transForm">
+                <input type="hidden" id="trans-id">
+                <div class="form-group">
+                    <label for="trans-change">Quantity:</label>
+                    <input type="number" id="trans-change" min="1" required>
+                </div>
+                <div id="out-logic" class="form-group">
+                    <label for="destination">Destination:</label>
+                    <input type="text" id="destination" placeholder="Where is it going?">
+                </div>
+                <div class="form-group">
+                    <label for="purpose">Purpose/Reference:</label>
+                    <input type="text" id="purpose" placeholder="Reason for transaction">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal()">Cancel</button>
+                    <button type="submit">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

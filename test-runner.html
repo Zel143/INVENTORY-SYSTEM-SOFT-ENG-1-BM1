@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSense Test Suite Runner</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+            margin: 0;
+        }
+        .test-output {
+            background: #000;
+            border: 1px solid #333;
+            padding: 20px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.4;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .summary {
+            background: #002200;
+            border: 2px solid #00ff00;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 8px;
+        }
+        .passed { color: #00ff00; }
+        .failed { color: #ff4444; }
+        .warning { color: #ffff00; }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        button:hover { background: #00cc00; }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #ffff00, #ff4444);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 StockSense Test Suite Runner</h1>
+    <p>Testing 17 Critical Fixes + 58 Regression Tests | Traceability: FR-1.0 to FR-9.0</p>
+
+    <button onclick="runTests()">▶️ Run Test Suite</button>
+
+    <div class="progress">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <div class="test-output" id="testOutput">
+        Click "Run Test Suite" to begin testing...
+    </div>
+
+    <script src="test-suite.js"></script>
+    <script>
+        // Override console.log to capture output
+        const originalLog = console.log;
+        let outputBuffer = '';
+        let testCount = 0;
+        let totalTests = 75; // 17 critical + 58 regression
+
+        console.log = function(...args) {
+            const message = args.join(' ');
+            outputBuffer += message + '\n';
+            document.getElementById('testOutput').textContent = outputBuffer;
+            document.getElementById('testOutput').scrollTop = document.getElementById('testOutput').scrollHeight;
+
+            // Update progress bar
+            if (message.includes('✅') || message.includes('❌')) {
+                testCount++;
+                const progress = (testCount / totalTests) * 100;
+                document.getElementById('progressBar').style.width = progress + '%';
+            }
+        };
+
+        async function runTests() {
+            outputBuffer = '';
+            testCount = 0;
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('testOutput').textContent = 'Initializing test suite...\n';
+
+            try {
+                // Run the test suite
+                await testRunner.runAll();
+
+                // Add summary
+                const summary = document.createElement('div');
+                summary.className = 'summary';
+                summary.innerHTML = `
+                    <h3>Test Execution Summary</h3>
+                    <p><span class="passed">✅ Passed: ${testRunner.passed}</span></p>
+                    <p><span class="failed">❌ Failed: ${testRunner.failed}</span></p>
+                    <p><span class="warning">📊 Success Rate: ${((testRunner.passed / totalTests) * 100).toFixed(1)}%</span></p>
+                    <p><strong>Status:</strong> ${testRunner.failed === 0 ? '<span class="passed">ALL TESTS PASSED</span>' : '<span class="failed">TESTS FAILED</span>'}</p>
+                `;
+                document.body.appendChild(summary);
+
+            } catch (error) {
+                console.log(`💥 Test suite execution failed: ${error.message}`);
+            }
+        }
+
+        // Auto-run tests when page loads (optional)
+        // window.addEventListener('load', () => setTimeout(runTests, 1000));
+    </script>
+</body>
+</html>
