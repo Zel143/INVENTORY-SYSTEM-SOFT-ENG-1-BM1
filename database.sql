@@ -127,17 +127,19 @@ BEGIN
 END;
 
 -- Trigger: Prevent transaction deletion (immutable audit trail)
+-- ABORT rolls back all changes made by the offending statement, not just stopping it.
 CREATE TRIGGER prevent_transaction_delete
 BEFORE DELETE ON transactions
 BEGIN
-    SELECT RAISE(FAIL, 'Transactions cannot be deleted - immutable audit trail');
+    SELECT RAISE(ABORT, 'Transactions cannot be deleted - immutable audit trail');
 END;
 
 -- Trigger: Prevent transaction updates (immutable audit trail)
+-- ABORT rolls back all changes made by the offending statement, not just stopping it.
 CREATE TRIGGER prevent_transaction_update
 BEFORE UPDATE ON transactions
 BEGIN
-    SELECT RAISE(FAIL, 'Transactions cannot be modified - immutable audit trail');
+    SELECT RAISE(ABORT, 'Transactions cannot be modified - immutable audit trail');
 END;
 
 -- ======================================

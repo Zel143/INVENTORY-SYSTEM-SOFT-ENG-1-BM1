@@ -254,16 +254,28 @@ app.post('/api/inventory', requireAdmin, (req, res) => {
 app.put('/api/inventory/:code', requireAuth, (req, res) => {
     try {
         const { code } = req.params;
-        const { quantity_change, transaction_type, destination, purpose } = req.body;
+        const { transaction_type, destination, purpose } = req.body;
         const user = req.session.user;
 
-        // Reject zero or missing quantity
-        if (quantity_change === 0 || quantity_change === undefined || quantity_change === null) {
-            return res.status(400).json({ error: 'Quantity must be non-zero' });
+        // ── Guardrail 1: quantity must be a finite, non-zero number ──────────
+        // Coerce to Number so string "0", NaN, Infinity, and missing values are
+        // all caught by a single, type-safe check.
+        const quantity_change = Number(req.body.quantity_change);
+        if (!Number.isFinite(quantity_change) || quantity_change === 0) {
+            return res.status(400).json({ error: 'Quantity must be a non-zero number' });
         }
 
-        // Require destination for dispatches
-        if (transaction_type === 'dispatch' && (!destination || !destination.trim())) {
+        // ── Guardrail 2: destination required for any stock-removal operation ─
+        // A blank destination is blocked whenever stock is being removed
+        // (quantity_change < 0), regardless of what the client sets as the
+        // transaction_type label, so mislabelled payloads cannot bypass the rule.
+        const trimmedDestination = (destination || '').trim();
+        if (quantity_change < 0 && !trimmedDestination) {
+            return res.status(400).json({ error: 'Destination is required for dispatch / stock-removal operations' });
+        }
+        // Also enforce explicitly for the 'dispatch' type even when qty > 0
+        // (e.g. a correction record) so the field is never silently omitted.
+        if (transaction_type === 'dispatch' && !trimmedDestination) {
             return res.status(400).json({ error: 'Destination is required for dispatch' });
         }
 
@@ -317,8 +329,9 @@ app.put('/api/inventory/:code', requireAuth, (req, res) => {
                                          transaction_type, destination, purpose)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(transactionId, code, item.description, user.id, user.display_name,
-                   quantity_change, previous_stock, new_stock, transaction_type, 
-                   destination, purpose);
+                   quantity_change, previous_stock, new_stock, transaction_type,
+                   // Store trimmed destination so whitespace-only values are never persisted
+                   trimmedDestination || null, purpose);
 
             return { transactionId, new_stock };
         });
