@@ -22,9 +22,18 @@
 
 const API_URL = 'http://localhost:3000/api';
 
-// For TC-84 we verify the trigger directly against the SQLite file
-const Database = require('better-sqlite3');
-const path     = require('path');
+// For TC-84 we verify the PostgreSQL trigger directly (no API layer needed)
+const { Pool } = require('pg');
+const path      = require('path');
+
+// Direct DB pool for immutability/trigger tests only
+const testPool = new Pool({
+    host:     process.env.PG_HOST     || 'localhost',
+    port:     parseInt(process.env.PG_PORT || '5432'),
+    database: process.env.PG_DATABASE || 'stocksense',
+    user:     process.env.PG_USER     || 'postgres',
+    password: process.env.PG_PASSWORD || 'postgres',
+});
 
 // ---------------------------------------------------------------------------
 //  COLOURS
@@ -377,60 +386,54 @@ async function runBlockA() {
     }
 
     // -----------------------------------------------------------------------
-    //  A17 — TC-84: Immutable Triggers — RAISE(ABORT) blocks DELETE
-    //  FR-9.0  (direct SQLite test — bypasses API layer)
+    //  A17 — TC-84: Immutable Triggers — PostgreSQL trigger blocks DELETE
+    //  FR-9.0  (direct pg test — bypasses API layer)
     // -----------------------------------------------------------------------
     {
-        const dbPath = path.join(__dirname, 'stocksense.db');
         let triggerBlocked = false;
         let triggerNote    = '';
+        const client = await testPool.connect().catch(e => { triggerNote = `PG connect failed: ${e.message}`; return null; });
 
-        try {
-            // First create a transaction row to try deleting
-            const db  = new Database(dbPath, { readonly: false });
-            db.pragma('foreign_keys = OFF');  // avoid FK issues in isolation
+        if (client) {
+            try {
+                // 1. Confirm the trigger exists in pg_trigger
+                const trig = (await client.query(
+                    `SELECT trigger_name FROM information_schema.triggers
+                     WHERE event_object_table = 'transactions'
+                       AND trigger_name = 'trg_prevent_transaction_delete'`
+                )).rows[0];
 
-            // Verify the trigger exists and uses ABORT
-            const trigger = db.prepare(
-                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='prevent_transaction_delete'"
-            ).get();
-
-            if (!trigger) {
-                triggerNote    = 'trigger prevent_transaction_delete not found — run init-database.js';
-                triggerBlocked = false;
-            } else {
-                const usesAbort = trigger.sql.includes('RAISE(ABORT');
-                if (!usesAbort) {
-                    triggerNote    = 'trigger found but still uses RAISE(FAIL) — schema not re-initialised';
+                if (!trig) {
+                    triggerNote    = 'trigger trg_prevent_transaction_delete not found — run node init-database.js';
                     triggerBlocked = false;
                 } else {
-                    // Try to actually DELETE a transaction row if one exists
-                    const tx = db.prepare("SELECT id FROM transactions LIMIT 1").get();
+                    // 2. Try to DELETE a transaction row to prove the trigger fires
+                    const tx = (await client.query('SELECT id FROM transactions LIMIT 1')).rows[0];
                     if (tx) {
                         try {
-                            db.prepare("DELETE FROM transactions WHERE id = ?").run(tx.id);
+                            await client.query('DELETE FROM transactions WHERE id = $1', [tx.id]);
                             triggerNote    = 'DELETE succeeded — trigger did NOT fire (CRITICAL)';
                             triggerBlocked = false;
                         } catch (e) {
                             triggerBlocked = e.message.includes('immutable audit trail');
                             triggerNote    = triggerBlocked
-                                ? 'RAISE(ABORT) fired — row unchanged'
+                                ? 'RAISE EXCEPTION fired — row unchanged ✅'
                                 : `unexpected error: ${e.message}`;
+                            // Rollback so the connection stays clean
+                            await client.query('ROLLBACK').catch(() => {});
                         }
                     } else {
-                        // No rows to delete; confirm the trigger uses ABORT (static check)
-                        triggerBlocked = usesAbort;
-                        triggerNote    = 'no transaction rows to delete; RAISE(ABORT) confirmed by static inspection';
+                        // No rows yet — confirm trigger existence is sufficient static proof
+                        triggerBlocked = true;
+                        triggerNote    = 'no transaction rows yet; trg_prevent_transaction_delete confirmed in pg_trigger';
                     }
                 }
+            } finally {
+                client.release();
             }
-            db.close();
-        } catch (e) {
-            triggerNote    = `DB open failed: ${e.message}`;
-            triggerBlocked = false;
         }
 
-        record('blockA', '84', 'Immutable Triggers — RAISE(ABORT) blocks DELETE on transactions',
+        record('blockA', '84', 'Immutable Triggers — PostgreSQL trigger blocks DELETE on transactions',
             triggerBlocked, triggerNote);
     }
 }
@@ -683,15 +686,26 @@ async function runBlockB() {
     }
 
     // -----------------------------------------------------------------------
-    //  B17 — TC-98: Offline Resistance — SQLite serves requests without network
-    //  FR-9.0  (inherent — no test needed; verify DB path is local)
+    //  B17 — TC-98: DB Connectivity — PostgreSQL responds to a simple query
+    //  FR-9.0  (verifies the DB layer is live and schema is intact)
     // -----------------------------------------------------------------------
     {
-        const dbPath = path.join(__dirname, 'stocksense.db');
-        const fs     = require('fs');
-        const ok     = fs.existsSync(dbPath);
-        record('blockB', '98', 'Offline Resistance — stocksense.db exists locally',
-            ok, dbPath);
+        let ok   = false;
+        let note = '';
+        const c  = await testPool.connect().catch(e => { note = e.message; return null; });
+        if (c) {
+            try {
+                const row = (await c.query('SELECT current_database() AS db')).rows[0];
+                ok   = !!row;
+                note = `connected to database: ${row?.db}`;
+            } catch (e) {
+                note = e.message;
+            } finally {
+                c.release();
+            }
+        }
+        record('blockB', '98', 'DB Connectivity — PostgreSQL responds to pg query',
+            ok, note);
     }
 
     // -----------------------------------------------------------------------
@@ -751,7 +765,7 @@ function printSummary() {
 
 (async () => {
     console.log(`${C.bold}\n🏭 STOCKSENSE — CRITICAL FIX TEST SUITE${C.reset}`);
-    console.log(`${C.dim}Run: node init-database.js first if stocksense.db is stale${C.reset}\n`);
+    console.log(`${C.dim}Run: node init-database.js first if the schema is stale${C.reset}\n`);
 
     try {
         // Warm-up: make sure server responds
@@ -766,8 +780,12 @@ function printSummary() {
         printSummary();
 
     } catch (err) {
+        await testPool.end().catch(() => {});
         console.error(`\n${C.bold}${C.red}FATAL: ${err.message}${C.reset}`);
         console.error('Make sure the server is running:  npm start\n');
+        await testPool.end().catch(() => {});
         process.exit(1);
     }
+    // Release the pg pool so node exits cleanly
+    await testPool.end().catch(() => {});
 })();
