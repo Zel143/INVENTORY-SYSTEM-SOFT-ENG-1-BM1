@@ -18,6 +18,7 @@
 
     <header class="top-header">
         <div class="header-brand">
+            <button class="hamburger-btn" id="hamburger-btn" onclick="toggleSidebar()" title="Toggle sidebar"><i class="fas fa-bars"></i></button>
             <img src="STOCKSENCE LOGO.png" alt="StockSense" class="header-logo">
             <h1>StockSense</h1>
         </div>
@@ -49,6 +50,10 @@
             <!-- TRACKER TAB -->
             <div id="view-tracker" class="view-section active">
                 <h2 class="section-title">Core Inventory Status</h2>
+
+                <div class="tracker-toolbar">
+                    <input type="text" id="search-inventory" class="search-input" placeholder="Search by code, description or vendor…" oninput="filterInventory()">
+                </div>
 
                 <div class="metrics-grid">
                     <div class="metric-card card-blue"><h4>Total SKUs</h4><div class="metric-value"><span id="stat-total">—</span> items</div></div>
@@ -109,13 +114,17 @@
             <div id="view-history" class="view-section" style="display: none;">
                 <h2 class="section-title">Transaction History</h2>
                 <div class="panel">
+                    <div class="history-toolbar">
+                        <input type="text" id="history-search" class="search-input" placeholder="Search history…" oninput="filterHistory()">
+                        <button onclick="exportHistoryCSV()" class="btn-export"><i class="fas fa-download"></i> Export CSV</button>
+                    </div>
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Time</th>
-                                <th>User</th>
-                                <th>Item</th>
-                                <th>Change</th>
+                                <th class="sortable" onclick="sortHistory('timestamp')">Time <i class="fas fa-sort"></i></th>
+                                <th class="sortable" onclick="sortHistory('actor_name')">User <i class="fas fa-sort"></i></th>
+                                <th class="sortable" onclick="sortHistory('item_id')">Item <i class="fas fa-sort"></i></th>
+                                <th class="sortable" onclick="sortHistory('quantity_change')">Change <i class="fas fa-sort"></i></th>
                                 <th>Dest / Purpose</th>
                             </tr>
                         </thead>
@@ -123,6 +132,7 @@
                             <tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Loading history…</td></tr>
                         </tbody>
                     </table>
+                    <div id="history-pagination" class="pagination-bar"></div>
                 </div>
             </div>
         </main>
@@ -141,9 +151,22 @@
                     <label>Quantity</label>
                     <input type="number" id="trans-qty" min="1" value="1" required>
                 </div>
+                <div id="in-source" style="display:none;">
+                    <div class="form-group"><label>Source / Supplier</label><input type="text" id="source" placeholder="e.g. Supplier A"></div>
+                </div>
                 <div id="out-logic">
                     <div class="guardrail-warning mb-3"><i class="fas fa-shield-alt"></i> Traceability Required</div>
-                    <div class="form-group"><label>Destination</label><input type="text" id="destination" placeholder="e.g. Workshop A"></div>
+                    <div class="form-group">
+                        <label>Destination</label>
+                        <input type="text" id="destination" placeholder="e.g. Workshop A" list="dest-options">
+                        <datalist id="dest-options">
+                            <option value="Workshop A">
+                            <option value="Warehouse B">
+                            <option value="Maintenance Bay">
+                            <option value="Production Floor">
+                            <option value="Station C">
+                        </datalist>
+                    </div>
                     <div class="form-group"><label>Purpose</label><input type="text" id="purpose" placeholder="e.g. Maintenance Agreement"></div>
                 </div>
                 <div class="modal-actions mt-4">
@@ -153,6 +176,34 @@
             </form>
         </div>
     </div>
+
+    <!-- EDIT ITEM MODAL (TC-52-58) -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <h3>Edit Item</h3>
+            <form id="editForm">
+                <input type="hidden" id="edit-code">
+                <div class="form-group"><label>Description <span class="required">*</span></label><input type="text" id="edit-description" required></div>
+                <div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Min Threshold</label><input type="number" id="edit-min" min="0"></div>
+                    <div class="form-group"><label>Max Ceiling</label><input type="number" id="edit-max" min="1"></div>
+                </div>
+                <div class="form-group"><label>Warranty End</label><input type="date" id="edit-warranty"></div>
+                <div class="modal-actions mt-4" style="display:flex;justify-content:space-between;align-items:center;">
+                    <button type="button" class="btn-danger" onclick="deleteItem()"><i class="fas fa-trash"></i> Delete Item</button>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button type="button" class="btn-cancel" onclick="closeEditModal()">Cancel</button>
+                        <button type="submit" class="btn-primary">Save Changes</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATIONS (TC-75-76) -->
+    <div id="toast-container" class="toast-container"></div>
 
     <script src="app.js"></script>
 </body>

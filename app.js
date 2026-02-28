@@ -11,6 +11,13 @@ let currentUser = null;
 let sortKey = null;
 let sortAsc = true;
 
+// History state
+let allTransactions = [];
+let historySortKey = 'timestamp';
+let historySortAsc = false;
+let historyPage = 1;
+const HIST_PAGE_SIZE = 20;
+
 // ======================================
 // BOOTSTRAP — run on page load
 // ======================================
@@ -36,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     subscribeSSE();
     setupAddItemForm();
     setupTransactionForm();
+    setupEditForm();
 });
 
 // ======================================
@@ -103,8 +111,10 @@ function renderInventoryTable(data) {
 
         const available = (item.current_stock || 0) - (item.allocated_stock || 0);
         const stockClass = item.current_stock <= item.min_threshold ? 'style="color:var(--danger)"' : '';
+        const isOverstock = item.current_stock > item.max_ceiling;
+        const rowClass = isOverstock ? ' class="overstock-row"' : '';
 
-        return `<tr>
+        return `<tr${rowClass}>
             <td class="font-bold text-dark">${item.code}</td>
             <td><div class="desc-title">${item.description}</div></td>
             <td class="text-muted">${item.vendor || '—'}</td>
@@ -115,9 +125,27 @@ function renderInventoryTable(data) {
             <td>
                 <button class="btn-icon text-green" title="Restock" onclick="openModal('${item.code}', 'in')"><i class="fas fa-plus-circle"></i></button>
                 <button class="btn-icon text-red" title="Dispatch" onclick="openModal('${item.code}', 'out')"><i class="fas fa-minus-circle"></i></button>
+                ${currentUser?.role === 'admin' ? `<button class="btn-icon text-blue" title="Edit Item" onclick="openEditModal('${item.code}')"><i class="fas fa-edit"></i></button>` : ''}
             </td>
         </tr>`;
     }).join('');
+}
+
+// ======================================
+// SEARCH / FILTER INVENTORY (TC-24–30)
+// ======================================
+function filterInventory() {
+    const q = (document.getElementById('search-inventory')?.value || '').toLowerCase().trim();
+    if (!q) {
+        renderInventoryTable(inventory);
+        return;
+    }
+    const filtered = inventory.filter(item =>
+        (item.code || '').toLowerCase().includes(q) ||
+        (item.description || '').toLowerCase().includes(q) ||
+        (item.vendor || '').toLowerCase().includes(q)
+    );
+    renderInventoryTable(filtered);
 }
 
 // ======================================
@@ -199,14 +227,20 @@ function openModal(code, type) {
     if (destInput) destInput.value = '';
     if (purposeInput) purposeInput.value = '';
 
+    const srcInput = document.getElementById('source');
+    const inSource = document.getElementById('in-source');
+    if (srcInput) srcInput.value = '';
+
     if (type === 'in') {
         title.innerText = 'Restock: ' + code;
         if (subtitle) subtitle.innerText = `${item.description} — Current stock: ${item.current_stock}`;
+        if (inSource) inSource.style.display = 'block';
         outLogic.style.display = 'none';
     } else {
         title.innerText = 'Dispatch: ' + code;
         const available = item.current_stock - item.allocated_stock;
         if (subtitle) subtitle.innerText = `${item.description} — Available: ${available} (${item.current_stock} total, ${item.allocated_stock} reserved)`;
+        if (inSource) inSource.style.display = 'none';
         outLogic.style.display = 'block';
     }
 }
@@ -227,14 +261,15 @@ function setupTransactionForm() {
         const qty = parseInt(document.getElementById('trans-qty').value, 10);
         const destination = (document.getElementById('destination')?.value || '').trim();
         const purpose = (document.getElementById('purpose')?.value || '').trim();
+        const source = (document.getElementById('source')?.value || '').trim();
         const btn = form.querySelector('button[type="submit"]');
 
         if (!qty || qty <= 0) {
-            alert('Quantity must be a positive number.');
+            showToast('Quantity must be a positive number.', 'error');
             return;
         }
         if (type === 'out' && !destination) {
-            alert('Destination is required for dispatch operations.');
+            showToast('Destination is required for dispatch operations.', 'error');
             return;
         }
 
@@ -245,7 +280,8 @@ function setupTransactionForm() {
             quantity_change: type === 'in' ? qty : -qty,
             transaction_type: type === 'in' ? 'addition' : 'dispatch',
             destination: destination || undefined,
-            purpose: purpose || undefined
+            purpose: purpose || undefined,
+            source: source || undefined
         };
 
         try {
@@ -261,12 +297,13 @@ function setupTransactionForm() {
                 closeTransModal();
                 await loadInventory();
                 await loadAlerts();
+                showToast('Transaction recorded successfully.');
             } else {
                 const msg = data.message || data.error || 'Transaction failed';
-                alert(msg);
+                showToast(msg, 'error');
             }
         } catch {
-            alert('Connection Error — Is the server running?');
+            showToast('Connection Error — Is the server running?', 'error');
         } finally {
             btn.textContent = 'Confirm';
             btn.disabled = false;
@@ -299,7 +336,7 @@ function setupAddItemForm() {
         };
 
         if (!body.code || !body.description) {
-            alert('Item Code and Description are required.');
+            showToast('Item Code and Description are required.', 'error');
             btn.textContent = 'Add Item';
             btn.disabled = false;
             return;
@@ -318,13 +355,14 @@ function setupAddItemForm() {
                 form.reset();
                 await loadInventory();
                 await loadAlerts();
+                showToast('Item added successfully.');
                 // Switch to tracker tab
                 switchTab('tracker', document.querySelector('.nav-item'));
             } else {
-                alert('Failed to add item: ' + (data.error || 'Unknown error'));
+                showToast('Failed to add item: ' + (data.error || 'Unknown error'), 'error');
             }
         } catch {
-            alert('Connection Error — Is the server running?');
+            showToast('Connection Error — Is the server running?', 'error');
         } finally {
             btn.textContent = 'Add Item';
             btn.disabled = false;
@@ -333,7 +371,7 @@ function setupAddItemForm() {
 }
 
 // ======================================
-// TRANSACTION HISTORY
+// TRANSACTION HISTORY (with sort/filter/pagination/export)
 // ======================================
 async function loadHistory() {
     const tbody = document.getElementById('history-list');
@@ -341,20 +379,69 @@ async function loadHistory() {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">Loading…</td></tr>';
 
     try {
-        const res = await fetch(`${API}/transactions?limit=100`, { credentials: 'include' });
+        const res = await fetch(`${API}/transactions?limit=500`, { credentials: 'include' });
         if (res.status === 403) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">Transaction history is available to admins only.</td></tr>';
             return;
         }
         if (!res.ok) throw new Error('Failed');
-        const txns = await res.json();
+        allTransactions = await res.json();
+        historyPage = 1;
+        historySortKey = 'timestamp';
+        historySortAsc = false;
+        renderHistoryPage();
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem;">Failed to load history — ${err.message}</td></tr>`;
+    }
+}
 
-        if (!txns.length) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">No transactions yet.</td></tr>';
-            return;
-        }
+function filterHistory() {
+    historyPage = 1;
+    renderHistoryPage();
+}
 
-        tbody.innerHTML = txns.map(t => {
+function sortHistory(key) {
+    if (historySortKey === key) {
+        historySortAsc = !historySortAsc;
+    } else {
+        historySortKey = key;
+        historySortAsc = (key !== 'timestamp');
+    }
+    historyPage = 1;
+    renderHistoryPage();
+}
+
+function renderHistoryPage() {
+    const q = (document.getElementById('history-search')?.value || '').toLowerCase().trim();
+    let data = allTransactions.filter(t =>
+        !q ||
+        (t.item_id || '').toLowerCase().includes(q) ||
+        (t.actor_name || '').toLowerCase().includes(q) ||
+        (t.destination || '').toLowerCase().includes(q) ||
+        (t.purpose || '').toLowerCase().includes(q)
+    );
+
+    data = [...data].sort((a, b) => {
+        let va = a[historySortKey] ?? '';
+        let vb = b[historySortKey] ?? '';
+        if (historySortKey === 'timestamp') { va = new Date(va); vb = new Date(vb); }
+        else if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb + '').toLowerCase(); }
+        if (va < vb) return historySortAsc ? -1 : 1;
+        if (va > vb) return historySortAsc ? 1 : -1;
+        return 0;
+    });
+
+    const totalPages = Math.max(1, Math.ceil(data.length / HIST_PAGE_SIZE));
+    if (historyPage > totalPages) historyPage = totalPages;
+    const slice = data.slice((historyPage - 1) * HIST_PAGE_SIZE, historyPage * HIST_PAGE_SIZE);
+
+    const tbody = document.getElementById('history-list');
+    if (!tbody) return;
+
+    if (!slice.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">No transactions found.</td></tr>';
+    } else {
+        tbody.innerHTML = slice.map(t => {
             const when = new Date(t.timestamp).toLocaleString();
             const change = t.quantity_change > 0
                 ? `<span style="color:var(--success)">+${t.quantity_change}</span>`
@@ -368,8 +455,139 @@ async function loadHistory() {
                 <td>${dest}</td>
             </tr>`;
         }).join('');
-    } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem;">Failed to load history — ${err.message}</td></tr>`;
+    }
+
+    const pagBar = document.getElementById('history-pagination');
+    if (pagBar) {
+        if (totalPages <= 1) {
+            pagBar.innerHTML = `<span style="color:var(--text-muted);font-size:0.8rem;">${data.length} records</span>`;
+        } else {
+            let btns = `<button class="pag-btn" onclick="goHistoryPage(${historyPage - 1})" ${historyPage === 1 ? 'disabled' : ''}>&laquo;</button>`;
+            for (let p = 1; p <= totalPages; p++) {
+                btns += `<button class="pag-btn ${p === historyPage ? 'pag-active' : ''}" onclick="goHistoryPage(${p})">${p}</button>`;
+            }
+            btns += `<button class="pag-btn" onclick="goHistoryPage(${historyPage + 1})" ${historyPage === totalPages ? 'disabled' : ''}>&raquo;</button>`;
+            btns += `<span style="color:var(--text-muted);font-size:0.8rem;margin-left:0.5rem;">${data.length} records</span>`;
+            pagBar.innerHTML = btns;
+        }
+    }
+}
+
+function goHistoryPage(page) {
+    historyPage = page;
+    renderHistoryPage();
+}
+
+function exportHistoryCSV() {
+    if (!allTransactions.length) { showToast('No history data to export.', 'error'); return; }
+    const q = (document.getElementById('history-search')?.value || '').toLowerCase().trim();
+    const data = allTransactions.filter(t =>
+        !q ||
+        (t.item_id || '').toLowerCase().includes(q) ||
+        (t.actor_name || '').toLowerCase().includes(q) ||
+        (t.destination || '').toLowerCase().includes(q)
+    );
+    const header = ['Timestamp', 'User', 'Item Code', 'Quantity Change', 'Type', 'Destination', 'Purpose'];
+    const rows = data.map(t => [
+        new Date(t.timestamp).toLocaleString(),
+        t.actor_name || '',
+        t.item_id,
+        t.quantity_change,
+        t.transaction_type || '',
+        t.destination || '',
+        t.purpose || ''
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+    const csv = [header.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stocksense-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('History exported to CSV.');
+}
+
+// ======================================
+// EDIT ITEM (TC-52–54) + DELETE (TC-56–58)
+// ======================================
+function openEditModal(code) {
+    const item = inventory.find(i => i.code === code);
+    if (!item) return;
+    document.getElementById('edit-code').value = code;
+    document.getElementById('edit-description').value = item.description || '';
+    document.getElementById('edit-vendor').value = item.vendor || '';
+    document.getElementById('edit-min').value = item.min_threshold ?? 5;
+    document.getElementById('edit-max').value = item.max_ceiling ?? 20;
+    const we = item.warranty_end ? item.warranty_end.split('T')[0] : '';
+    document.getElementById('edit-warranty').value = we;
+    document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+}
+
+function setupEditForm() {
+    const form = document.getElementById('editForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const code = document.getElementById('edit-code').value;
+        const btn = form.querySelector('button[type="submit"]');
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+        const body = {
+            description:   document.getElementById('edit-description').value.trim(),
+            vendor:        document.getElementById('edit-vendor').value.trim() || null,
+            min_threshold: parseInt(document.getElementById('edit-min').value, 10),
+            max_ceiling:   parseInt(document.getElementById('edit-max').value, 10),
+            warranty_end:  document.getElementById('edit-warranty').value || null,
+        };
+        try {
+            const res = await fetch(`${API}/inventory/${code}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                closeEditModal();
+                await loadInventory();
+                await loadAlerts();
+                showToast('Item updated successfully.');
+            } else {
+                showToast(data.error || 'Failed to update item.', 'error');
+            }
+        } catch {
+            showToast('Connection Error — Is the server running?', 'error');
+        } finally {
+            btn.textContent = 'Save Changes';
+            btn.disabled = false;
+        }
+    });
+}
+
+async function deleteItem() {
+    const code = document.getElementById('edit-code').value;
+    if (!confirm(`Permanently delete item "${code}"? This action cannot be undone.`)) return;
+    try {
+        const res = await fetch(`${API}/inventory/${code}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            closeEditModal();
+            await loadInventory();
+            await loadAlerts();
+            showToast(`Item "${code}" deleted.`);
+        } else {
+            showToast(data.error || 'Failed to delete item.', 'error');
+        }
+    } catch {
+        showToast('Connection Error — Is the server running?', 'error');
     }
 }
 
@@ -395,6 +613,33 @@ async function logout() {
         await fetch(`${API}/logout`, { method: 'POST', credentials: 'include' });
     } catch { /* ignore */ }
     window.location.href = 'index.html';
+}
+
+// ======================================
+// HAMBURGER / SIDEBAR TOGGLE (TC-23)
+// ======================================
+function toggleSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) sidebar.classList.toggle('sidebar-hidden');
+}
+
+// ======================================
+// TOAST NOTIFICATIONS (TC-75–76)
+// ======================================
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) { console.warn(message); return; }
+    const toast = document.createElement('div');
+    const icon = type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle';
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<i class="fas fa-${icon}"></i> ${message}`;
+    container.appendChild(toast);
+    // Trigger animation
+    requestAnimationFrame(() => toast.classList.add('toast-show'));
+    setTimeout(() => {
+        toast.classList.remove('toast-show');
+        setTimeout(() => toast.remove(), 400);
+    }, 4000);
 }
 
 // ======================================

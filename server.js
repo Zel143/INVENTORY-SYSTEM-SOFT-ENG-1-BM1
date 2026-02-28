@@ -588,6 +588,69 @@ app.get('/api/stats', requireAuth, async (req, res) => {
     }
 });
 
+// PATCH /api/inventory/:code — Edit item details (Admin only)
+app.patch('/api/inventory/:code', requireAdmin, async (req, res) => {
+    try {
+        const { code } = req.params;
+        const { description, vendor, min_threshold, max_ceiling, warranty_end, date_delivered, storage_location } = req.body;
+
+        if (min_threshold !== undefined && max_ceiling !== undefined &&
+            Number(max_ceiling) < Number(min_threshold)) {
+            return res.status(400).json({ error: 'Max ceiling must be >= min threshold' });
+        }
+
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (description   !== undefined) { fields.push(`description = $${idx++}`);       values.push(description); }
+        if (vendor        !== undefined) { fields.push(`vendor = $${idx++}`);             values.push(vendor || null); }
+        if (min_threshold !== undefined) { fields.push(`min_threshold = $${idx++}`);      values.push(Number(min_threshold)); }
+        if (max_ceiling   !== undefined) { fields.push(`max_ceiling = $${idx++}`);        values.push(Number(max_ceiling)); }
+        if (warranty_end  !== undefined) { fields.push(`warranty_end = $${idx++}`);       values.push(warranty_end || null); }
+        if (date_delivered!== undefined) { fields.push(`date_delivered = $${idx++}`);     values.push(date_delivered || null); }
+        if (storage_location!==undefined){ fields.push(`storage_location = $${idx++}`);   values.push(storage_location || null); }
+
+        if (!fields.length) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        fields.push(`updated_at = CURRENT_TIMESTAMP`);
+        values.push(code);
+
+        const result = await pool.query(
+            `UPDATE inventory SET ${fields.join(', ')} WHERE code = $${idx}`,
+            values
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        broadcast('inventory:updated', { code });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Edit item error:', error);
+        res.status(500).json({ error: 'Failed to update item' });
+    }
+});
+
+// DELETE /api/inventory/:code — Remove item (Admin only)
+app.delete('/api/inventory/:code', requireAdmin, async (req, res) => {
+    try {
+        const { code } = req.params;
+        const result = await pool.query('DELETE FROM inventory WHERE code = $1', [code]);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+        broadcast('inventory:updated', { code });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete item error:', error);
+        res.status(500).json({ error: 'Failed to delete item' });
+    }
+});
+
 // ======================================
 // ERROR HANDLING
 // ======================================
