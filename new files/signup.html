@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSense - Sign Up</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="header">
+        <img src="STOCKSENCE LOGO.png" alt="StockSense Logo" class="brand-logo">
+        <p>Inventory Management System</p>
+    </div>
+
+    <div class="login-container">
+        <h2>Sign up</h2>
+        
+        <form id="signupForm" action="/api/register" method="POST">
+            
+            <div class="form-group">
+                <input type="text" id="fullName" name="full_name" class="input-field" placeholder="Full Name" required>
+            </div>
+            
+            <div class="form-group">
+                <input type="email" id="emailAddress" name="email" class="input-field" placeholder="Email Address" required>
+            </div>
+            
+            <div class="form-group" style="position: relative;">
+                <input type="password" id="regPass" name="password" class="input-field" placeholder="Password" style="padding-right: 45px;" required minlength="8">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('regPass', 'eyeIcon1')" title="Show/Hide Password">
+                    <i class="fas fa-eye" id="eyeIcon1"></i>
+                </button>
+            </div>
+            
+            <div class="form-group" style="position: relative;">
+                <input type="password" id="confirmPass" name="confirm_password" class="input-field" placeholder="Confirm Password" style="padding-right: 45px;" required>
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('confirmPass', 'eyeIcon2')" title="Show/Hide Password">
+                    <i class="fas fa-eye" id="eyeIcon2"></i>
+                </button>
+            </div>
+
+            <div class="form-group mt-4">
+                <button type="submit" id="signupBtn" class="login-btn">Create Account</button>
+            </div>
+            
+            <div class="form-footer center-footer mt-3">
+                <span style="color: #a0aec0;">Already have an account? </span><a href="index.html" style="color: #cbd5e0; font-weight: 600;">Login</a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        // --- Password Visibility Toggle Logic ---
+        function togglePasswordVisibility(inputId, iconId) {
+            const passwordInput = document.getElementById(inputId);
+            const eyeIcon = document.getElementById(iconId);
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.classList.remove('fa-eye');
+                eyeIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.classList.remove('fa-eye-slash');
+                eyeIcon.classList.add('fa-eye');
+            }
+        }
+
+        // --- Frontend Validation & Backend Handoff Simulation ---
+        document.getElementById('signupForm').addEventListener('submit', function(e) {
+            // NOTE FOR BACKEND TEAM: Remove e.preventDefault() to allow standard form submission to your API, 
+            // OR keep it and use fetch()/axios to send data to MongoDB/SQLite asynchronously.
+            e.preventDefault(); 
+            
+            const pass = document.getElementById('regPass');
+            const confirm = document.getElementById('confirmPass');
+            const btn = document.getElementById('signupBtn');
+            
+            // Basic UI validation before hitting the database
+            if (pass.value !== confirm.value) {
+                confirm.classList.add('error');
+                confirm.value = "";
+                confirm.type = "text";
+                confirm.placeholder = "Passwords do not match";
+                
+                setTimeout(() => {
+                    confirm.classList.remove('error');
+                    confirm.type = "password";
+                    confirm.placeholder = "Confirm Password";
+                }, 2500);
+                return;
+            }
+
+            // Simulate successful API call
+            btn.innerText = "Creating Account...";
+            btn.style.opacity = "0.7";
+            
+            setTimeout(() => {
+                alert("Frontend Simulation: Account created successfully! Proceeding to login.");
+                window.location.href = "index.html";
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
