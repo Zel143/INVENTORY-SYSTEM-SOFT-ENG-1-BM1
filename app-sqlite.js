@@ -1,6 +1,6 @@
 // ======================================
-// STOCKSENSE - SQLITE VERSION
-// Frontend with REST API Integration
+// STOCKSENSE - POSTGRESQL VERSION
+// Frontend with REST API + Real-Time SSE
 // ======================================
 
 const API_URL = 'http://localhost:3000/api';
@@ -177,6 +177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadInventory();
     renderAll();
     setupTheme();
+    connectSSE();   // real-time updates via Server-Sent Events
 
     // Register Add Item form handler
     const addItemForm = document.getElementById('addItemForm');
@@ -186,9 +187,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     const transForm = document.getElementById('transForm');
     if (transForm) transForm.addEventListener('submit', updateStock);
 
-    // Auto-refresh every 10 seconds
-    setInterval(fetchInventory, 10000);
+    // NOTE: polling removed — real-time updates are handled by SSE (connectSSE)
 });
+
+// ======================================
+// REAL-TIME SSE CONNECTION
+// ======================================
+
+let _sseSource = null;
+
+function connectSSE() {
+    if (_sseSource) _sseSource.close();
+    _sseSource = new EventSource(`${API_URL}/events`, { withCredentials: true });
+
+    _sseSource.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'inventory:updated' || msg.type === 'inventory:added') {
+            await loadInventory();
+            renderAll();
+        }
+    };
+
+    _sseSource.onerror = () => {
+        // Browser auto-reconnects; close our handle and let it restart
+        _sseSource.close();
+        _sseSource = null;
+        setTimeout(connectSSE, 5000);
+    };
+}
 
 // ======================================
 // RENDERING

@@ -17,7 +17,7 @@
     <div class="login-container">
         <h2>Sign up</h2>
         
-        <form id="signupForm" action="/api/register" method="POST">
+        <form id="signupForm">
             
             <div class="form-group">
                 <input type="text" id="fullName" name="full_name" class="input-field" placeholder="Full Name" required>
@@ -69,10 +69,8 @@
         }
 
         // --- Frontend Validation & Backend Handoff Simulation ---
-        document.getElementById('signupForm').addEventListener('submit', function(e) {
-            // NOTE FOR BACKEND TEAM: Remove e.preventDefault() to allow standard form submission to your API, 
-            // OR keep it and use fetch()/axios to send data to MongoDB/SQLite asynchronously.
-            e.preventDefault(); 
+        document.getElementById('signupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
             
             const pass = document.getElementById('regPass');
             const confirm = document.getElementById('confirmPass');
@@ -93,14 +91,36 @@
                 return;
             }
 
-            // Simulate successful API call
+            // Call the real backend register endpoint
             btn.innerText = "Creating Account...";
-            btn.style.opacity = "0.7";
-            
-            setTimeout(() => {
-                alert("Frontend Simulation: Account created successfully! Proceeding to login.");
-                window.location.href = "index.html";
-            }, 1000);
+            btn.disabled = true;
+
+            const fullName = document.getElementById('fullName').value.trim();
+            const email = document.getElementById('emailAddress').value.trim();
+            const password = pass.value;
+
+            try {
+                const res = await fetch('http://localhost:3000/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ full_name: fullName, email, password })
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    alert('Account created! You can now log in.');
+                    window.location.href = 'index.html';
+                } else {
+                    btn.innerText = 'Sign Up';
+                    btn.disabled = false;
+                    alert('Registration failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch {
+                btn.innerText = 'Sign Up';
+                btn.disabled = false;
+                alert('Connection Error — Is the server running?');
+            }
         });
     </script>
 </body>

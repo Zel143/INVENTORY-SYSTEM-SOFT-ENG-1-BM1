@@ -1,13 +1,17 @@
 -- ======================================
--- STOCKSENSE SQLite DATABASE SCHEMA
+-- STOCKSENSE PostgreSQL DATABASE SCHEMA
 -- Three-Table Architecture
 -- ======================================
 
--- Drop existing tables if they exist
-DROP TABLE IF EXISTS allocation_logs;
-DROP TABLE IF EXISTS transactions;
-DROP TABLE IF EXISTS inventory;
-DROP TABLE IF EXISTS users;
+-- Drop views first (they depend on tables)
+DROP VIEW IF EXISTS low_stock_items;
+DROP VIEW IF EXISTS recent_transactions;
+
+-- Drop tables in reverse dependency order
+DROP TABLE IF EXISTS allocation_logs CASCADE;
+DROP TABLE IF EXISTS transactions CASCADE;
+DROP TABLE IF EXISTS inventory CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
 
 -- ======================================
 -- USERS TABLE - Authentication & Roles
@@ -19,8 +23,8 @@ CREATE TABLE users (
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('admin', 'staff')),
     display_name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_login DATETIME
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP
 );
 
 -- Insert default users (password: "admin" and "staff" hashed with bcrypt)
@@ -45,8 +49,8 @@ CREATE TABLE inventory (
     warranty_end DATE,
     storage_location TEXT,
     image TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CHECK(current_stock >= 0),
     CHECK(allocated_stock >= 0),
     CHECK(min_threshold >= 0),
@@ -79,7 +83,7 @@ CREATE TABLE transactions (
     transaction_type TEXT CHECK(transaction_type IN ('addition', 'dispatch', 'allocation', 'deallocation')),
     destination TEXT,
     purpose TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (item_id) REFERENCES inventory(code),
     FOREIGN KEY (actor_id) REFERENCES users(id)
 );
@@ -102,8 +106,8 @@ CREATE TABLE allocation_logs (
     destination TEXT,
     purpose TEXT,
     status TEXT CHECK(status IN ('pending', 'approved', 'rejected', 'completed')),
-    requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    approved_at DATETIME,
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    approved_at TIMESTAMP,
     approved_by TEXT,
     notes TEXT,
     FOREIGN KEY (item_id) REFERENCES inventory(code),
@@ -116,31 +120,37 @@ CREATE INDEX idx_allocation_item ON allocation_logs(item_id);
 CREATE INDEX idx_allocation_status ON allocation_logs(status);
 
 -- ======================================
--- TRIGGERS - Maintain Data Integrity
+-- TRIGGER FUNCTIONS - Maintain Data Integrity
 -- ======================================
 
--- Trigger: Update inventory.updated_at on changes
-CREATE TRIGGER update_inventory_timestamp 
-AFTER UPDATE ON inventory
+-- Function: Update inventory.updated_at automatically
+CREATE OR REPLACE FUNCTION fn_update_inventory_timestamp()
+RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE inventory SET updated_at = CURRENT_TIMESTAMP WHERE code = NEW.code;
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
 END;
+$$ LANGUAGE plpgsql;
 
--- Trigger: Prevent transaction deletion (immutable audit trail)
--- ABORT rolls back all changes made by the offending statement, not just stopping it.
-CREATE TRIGGER prevent_transaction_delete
-BEFORE DELETE ON transactions
-BEGIN
-    SELECT RAISE(ABORT, 'Transactions cannot be deleted - immutable audit trail');
-END;
+CREATE TRIGGER trg_inventory_updated_at
+    BEFORE UPDATE ON inventory
+    FOR EACH ROW EXECUTE FUNCTION fn_update_inventory_timestamp();
 
--- Trigger: Prevent transaction updates (immutable audit trail)
--- ABORT rolls back all changes made by the offending statement, not just stopping it.
-CREATE TRIGGER prevent_transaction_update
-BEFORE UPDATE ON transactions
+-- Function: Block any modification of the transaction audit trail
+CREATE OR REPLACE FUNCTION fn_prevent_transaction_modification()
+RETURNS TRIGGER AS $$
 BEGIN
-    SELECT RAISE(ABORT, 'Transactions cannot be modified - immutable audit trail');
+    RAISE EXCEPTION 'Transactions cannot be % - immutable audit trail', TG_OP;
 END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_prevent_transaction_delete
+    BEFORE DELETE ON transactions
+    FOR EACH ROW EXECUTE FUNCTION fn_prevent_transaction_modification();
+
+CREATE TRIGGER trg_prevent_transaction_update
+    BEFORE UPDATE ON transactions
+    FOR EACH ROW EXECUTE FUNCTION fn_prevent_transaction_modification();
 
 -- ======================================
 -- VIEWS - Convenience Queries
@@ -183,7 +193,8 @@ ORDER BY t.timestamp DESC;
 -- ======================================
 -- DATABASE INFO
 -- ======================================
--- Schema Version: 1.0
--- Created: 2026-02-12
--- Compatible with: Node.js + Express + better-sqlite3
+-- Schema Version: 2.0
+-- Migrated: 2026-02-28
+-- Compatible with: Node.js + Express + pg (node-postgres)
+-- Database: PostgreSQL 13+
 -- ======================================
