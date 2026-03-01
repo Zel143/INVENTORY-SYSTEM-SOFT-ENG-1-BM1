@@ -68,39 +68,57 @@
             }
         }
 
-        // --- Frontend Validation & Backend Handoff Simulation ---
-        document.getElementById('signupForm').addEventListener('submit', function(e) {
-            // NOTE FOR BACKEND TEAM: Remove e.preventDefault() to allow standard form submission to your API, 
-            // OR keep it and use fetch()/axios to send data to MongoDB/SQLite asynchronously.
-            e.preventDefault(); 
-            
-            const pass = document.getElementById('regPass');
-            const confirm = document.getElementById('confirmPass');
-            const btn = document.getElementById('signupBtn');
-            
-            // Basic UI validation before hitting the database
+        // --- Register: calls /api/register ---
+        document.getElementById('signupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const full_name = document.getElementById('fullName').value.trim();
+            const email     = document.getElementById('emailAddress').value.trim();
+            const pass      = document.getElementById('regPass');
+            const confirm   = document.getElementById('confirmPass');
+            const btn       = document.getElementById('signupBtn');
+
+            // Password match check
             if (pass.value !== confirm.value) {
                 confirm.classList.add('error');
-                confirm.value = "";
-                confirm.type = "text";
-                confirm.placeholder = "Passwords do not match";
-                
+                confirm.value = '';
+                confirm.type = 'text';
+                confirm.placeholder = 'Passwords do not match';
                 setTimeout(() => {
                     confirm.classList.remove('error');
-                    confirm.type = "password";
-                    confirm.placeholder = "Confirm Password";
+                    confirm.type = 'password';
+                    confirm.placeholder = 'Confirm Password';
                 }, 2500);
                 return;
             }
 
-            // Simulate successful API call
-            btn.innerText = "Creating Account...";
-            btn.style.opacity = "0.7";
-            
-            setTimeout(() => {
-                alert("Frontend Simulation: Account created successfully! Proceeding to login.");
-                window.location.href = "index.html";
-            }, 1000);
+            btn.innerText = 'Creating Account...';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ full_name, email, password: pass.value })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert(`Account created! Your username is: ${data.username}\n\nYou can now log in.`);
+                    window.location.href = 'index.html';
+                } else {
+                    btn.innerText = 'Create Account';
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    alert('Error: ' + (data.error || 'Registration failed'));
+                }
+            } catch (err) {
+                btn.innerText = 'Create Account';
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                alert('Network error. Make sure the server is running.');
+            }
         });
     </script>
 </body>
