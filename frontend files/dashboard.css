@@ -159,3 +159,64 @@ input:checked + .slider:before { transform: translateX(32px); }
 .toast-hide    { animation: toastOut 0.4s ease forwards; }
 @keyframes toastIn  { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes toastOut { from { opacity: 1; transform: translateX(0); }    to { opacity: 0; transform: translateX(30px); } }
+
+/* --- TEXT-BLUE utility (edit icon) --- */
+.text-blue { color: var(--accent-blue); }
+
+/* --- HISTORY TOOLBAR (search + export) --- */
+.table-toolbar { margin-bottom: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.table-toolbar .search-input { flex: 1; min-width: 180px; }
+.btn-export {
+    background: var(--accent-blue); color: white; border: none;
+    padding: 10px 16px; border-radius: 10px; font-weight: 600;
+    font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+}
+.btn-export:hover { opacity: 0.9; }
+
+/* --- PAGINATION CONTROLS (TC-90/91/92) --- */
+.pagination-controls {
+    display: flex; align-items: center; justify-content: center; gap: 15px;
+    margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);
+}
+.btn-pag {
+    background: var(--bg-main); border: 1px solid var(--border-color);
+    color: var(--text-main); padding: 8px 18px; border-radius: 8px;
+    font-weight: 600; cursor: pointer; font-size: 0.9rem;
+}
+.btn-pag:hover:not(:disabled) { background: var(--accent-light); }
+.btn-pag:disabled { opacity: 0.35; cursor: not-allowed; }
+.pag-info { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+
+/* --- HAMBURGER (TC-23) --- */
+.hamburger-btn {
+    display: none; align-items: center; justify-content: center;
+    background: none; border: none; color: white; font-size: 1.3rem;
+    cursor: pointer; padding: 8px; border-radius: 8px;
+}
+.hamburger-btn:hover { background: rgba(255,255,255,0.15); }
+
+/* --- SIDEBAR MOBILE OVERLAY --- */
+#sidebar-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 99;
+}
+
+/* --- EDIT MODAL WIDER --- */
+#editModal .modal-content { width: 600px; max-width: 95vw; }
+
+/* --- MOBILE RESPONSIVE (TC-23) --- */
+@media (max-width: 768px) {
+    .hamburger-btn  { display: flex; }
+    .sidebar {
+        position: fixed; left: -260px; top: 70px;
+        height: calc(100vh - 70px); z-index: 100;
+        transition: left 0.28s ease; width: 250px;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.2);
+    }
+    .sidebar.sidebar-open { left: 0; }
+    .main-content { width: 100%; padding: 20px 15px; }
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+    body { overflow: auto; height: auto; }
+}

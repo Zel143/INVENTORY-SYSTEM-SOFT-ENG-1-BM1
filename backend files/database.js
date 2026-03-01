@@ -50,7 +50,7 @@ async function initDB() {
             CREATE TABLE IF NOT EXISTS transactions (
                 id SERIAL PRIMARY KEY,
                 inventory_code TEXT NOT NULL,
-                transaction_type TEXT NOT NULL CHECK(transaction_type IN ('addition', 'dispatch', 'allocation', 'deallocation')),
+                transaction_type TEXT NOT NULL CHECK(transaction_type IN ('addition', 'dispatch', 'allocation', 'deallocation', 'deletion')),
                 quantity_change INTEGER NOT NULL,
                 actor_id INTEGER,
                 actor_name TEXT,
@@ -58,6 +58,27 @@ async function initDB() {
                 purpose TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+        `);
+
+        // TC-58 migration: expand transaction_type CHECK to include 'deletion' on existing DBs
+        await client.query(`
+            DO $$
+            DECLARE c_name TEXT;
+            BEGIN
+                SELECT conname INTO c_name
+                FROM pg_constraint
+                WHERE conrelid = 'transactions'::regclass
+                  AND contype = 'c'
+                  AND pg_get_constraintdef(oid) LIKE '%addition%'
+                  AND pg_get_constraintdef(oid) NOT LIKE '%deletion%'
+                LIMIT 1;
+                IF c_name IS NOT NULL THEN
+                    EXECUTE format('ALTER TABLE transactions DROP CONSTRAINT %I', c_name);
+                    ALTER TABLE transactions ADD CONSTRAINT transactions_transaction_type_check
+                        CHECK(transaction_type IN ('addition','dispatch','allocation','deallocation','deletion'));
+                END IF;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
         `);
 
         // ---- IMMUTABLE AUDIT TRIGGERS ----

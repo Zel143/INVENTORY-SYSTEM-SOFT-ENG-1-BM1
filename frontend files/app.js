@@ -4,6 +4,8 @@ let inventoryData = [];
 let historyData   = [];
 let invSortState  = {};
 let histSortState = {};
+let histPage      = 1;
+let histTotalPages = 1;
 
 // ===================== INIT =====================
 document.addEventListener('DOMContentLoaded', async () => {
@@ -15,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await Promise.all([loadInventory(), loadStats(), loadAlerts()]);
     setupAddItemForm();
     setupTransactionForm();
+    setupEditForm();
     subscribeSSE();
 
     // Hide admin-only elements for staff users (TC-9)
@@ -81,8 +84,12 @@ function renderInventoryTable(data) {
         const stockStyle = isLow  ? 'style="color:var(--color-red);font-weight:700;"' : '';
         const overBadge  = isOver ? '<span class="badge badge-yellow" title="Overstock" style="margin-left:4px;">Over</span>' : '';
 
-        const deleteBtn = currentUser?.role === 'admin'
+        const isAdmin   = currentUser?.role === 'admin';
+        const deleteBtn = isAdmin
             ? `<button class="btn-icon text-muted admin-only" onclick="deleteItem('${item.code}')" title="Delete"><i class="fas fa-trash-alt"></i></button>`
+            : '';
+        const editBtn   = isAdmin
+            ? `<button class="btn-icon text-blue admin-only" onclick="openEditModal('${item.code}')" title="Edit"><i class="fas fa-edit"></i></button>`
             : '';
 
         list.innerHTML += `
@@ -97,7 +104,7 @@ function renderInventoryTable(data) {
                 <td>
                     <button class="btn-icon text-green" onclick="openModal('${item.code}','in')" title="Restock"><i class="fas fa-plus-circle"></i></button>
                     <button class="btn-icon text-red"   onclick="openModal('${item.code}','out')" title="Dispatch"><i class="fas fa-minus-circle"></i></button>
-                    ${deleteBtn}
+                    ${editBtn}${deleteBtn}
                 </td>
             </tr>`;
     });
@@ -222,6 +229,8 @@ function setupTransactionForm() {
         if (!qty || qty <= 0) { showToast('Quantity must be greater than zero', 'error'); return; }
         // TC-66: Destination required for dispatch
         if (type === 'out' && !dest.trim()) { showToast('Destination is required for dispatch', 'error'); return; }
+        // TC-73: Source required for restock
+        if (type === 'in' && !src.trim()) { showToast('Source / Vendor is required for restocking', 'error'); return; }
 
         // TC-60: disable button immediately
         btn.disabled = true;
@@ -320,18 +329,39 @@ async function deleteItem(code) {
 }
 
 // ===================== HISTORY =====================
-async function loadHistory() {
+async function loadHistory(page = histPage) {
+    histPage = page;
     try {
-        const res = await fetch('/api/transactions?limit=100');
+        const res = await fetch(`/api/transactions?limit=50&page=${page}`);
         if (res.status === 403) {
             const tbody = document.getElementById('history-body');
             if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Transaction history is visible to admin users only.</td></tr>';
             return;
         }
-        const data  = await res.json();
-        historyData = data.transactions || [];
+        const data     = await res.json();
+        historyData     = data.transactions || [];
+        histTotalPages  = data.pages || 1;
         renderHistory(historyData);
+        updatePaginationUI();
     } catch { /* non-critical */ }
+}
+
+function loadHistoryPage(page) {
+    if (page < 1 || page > histTotalPages) return;
+    loadHistory(page);
+}
+
+function updatePaginationUI() {
+    const pag  = document.getElementById('history-pagination');
+    const info = document.getElementById('pag-info');
+    const prev = document.getElementById('pag-prev');
+    const next = document.getElementById('pag-next');
+    if (!pag) return;
+    if (histTotalPages <= 1) { pag.style.display = 'none'; return; }
+    pag.style.display = 'flex';
+    if (info) info.textContent = `Page ${histPage} of ${histTotalPages}`;
+    if (prev) prev.disabled = histPage <= 1;
+    if (next) next.disabled = histPage >= histTotalPages;
 }
 
 function renderHistory(data) {
@@ -385,6 +415,31 @@ function sortHistory(key) {
     }));
 }
 
+// ===================== CSV EXPORT — TC-93/TC-94 =====================
+function exportHistoryCSV() {
+    if (!historyData.length) { showToast('No history data to export', 'error'); return; }
+    const headers = ['Time', 'User', 'Item Code', 'Item Name', 'Change', 'Destination / Purpose'];
+    const rows = historyData.map(t => [
+        new Date(t.timestamp).toLocaleString(),
+        t.actor_name || 'System',
+        t.inventory_code,
+        t.item_name || '',
+        (t.quantity_change > 0 ? '+' : '') + t.quantity_change,
+        t.destination || t.purpose || ''
+    ]);
+    const csv = [headers, ...rows]
+        .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `stocksense_history_page${histPage}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV downloaded ✓', 'success');
+}
+
 // ===================== SSE — Real-time updates (TC-40) =====================
 function subscribeSSE() {
     const es = new EventSource('/api/events');
@@ -410,6 +465,74 @@ function showToast(message, type = 'success') {
     toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}`;
     container.appendChild(toast);
     setTimeout(() => { toast.classList.add('toast-hide'); setTimeout(() => toast.remove(), 400); }, 3500);
+}
+
+// ===================== EDIT ITEM — TC-52/TC-53/TC-54 =====================
+function openEditModal(code) {
+    const item = inventoryData.find(i => i.code === code);
+    if (!item) return;
+    const el = id => document.getElementById(id);
+    el('edit-code-display').textContent = code;
+    el('edit-code').value           = code;
+    el('edit-name').value           = item.name           || '';
+    el('edit-desc').value           = item.description    || '';
+    el('edit-vendor').value         = item.vendor         || '';
+    el('edit-delivery').value       = item.delivery_date  || '';
+    el('edit-qty').value            = item.allocated_stock || 0;
+    el('edit-min').value            = item.min_threshold  || 0;
+    el('edit-max').value            = item.max_ceiling    || 999;
+    el('edit-warranty-start').value = item.warranty_start || '';
+    el('edit-warranty-end').value   = item.warranty_end   || '';
+    el('editModal').style.display   = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+}
+
+function setupEditForm() {
+    const form = document.getElementById('editForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn  = form.querySelector('button[type=submit]');
+        btn.disabled = true;
+        const code = document.getElementById('edit-code').value;
+        const payload = {
+            name:            document.getElementById('edit-name').value,
+            description:     document.getElementById('edit-desc').value,
+            vendor:          document.getElementById('edit-vendor').value,
+            delivery_date:   document.getElementById('edit-delivery').value,
+            allocated_stock: parseInt(document.getElementById('edit-qty').value) || 0,
+            min_threshold:   document.getElementById('edit-min').value,
+            max_ceiling:     document.getElementById('edit-max').value,
+            warranty_start:  document.getElementById('edit-warranty-start').value,
+            warranty_end:    document.getElementById('edit-warranty-end').value,
+        };
+        try {
+            const res  = await fetch(`/api/inventory/${code}/details`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok) showToast(data.error || 'Edit failed', 'error');
+            else {
+                closeEditModal();
+                showToast('Item updated ✓', 'success');
+                await Promise.all([loadInventory(), loadStats()]);
+            }
+        } catch {
+            showToast('Network error', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+}
+
+// ===================== MOBILE SIDEBAR — TC-23 =====================
+function toggleSidebar() {
+    document.querySelector('.sidebar')?.classList.toggle('sidebar-open');
 }
 
 // ===================== THEME =====================
@@ -439,5 +562,7 @@ function switchTab(tab, el) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('view-' + tab).style.display = 'block';
     if (el) el.classList.add('active');
-    if (tab === 'history') loadHistory();
+    // Close sidebar on mobile after navigation
+    document.querySelector('.sidebar')?.classList.remove('sidebar-open');
+    if (tab === 'history') { histPage = 1; loadHistory(1); }
 }

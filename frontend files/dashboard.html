@@ -18,6 +18,9 @@
 
     <header class="top-header">
         <div class="header-brand">
+            <button id="hamburger-btn" class="hamburger-btn" onclick="toggleSidebar()" title="Toggle Menu">
+                <i class="fas fa-bars"></i>
+            </button>
             <img src="STOCKSENCE LOGO.png" alt="StockSense" class="header-logo">
             <h1>StockSense</h1>
         </div>
@@ -111,6 +114,7 @@
                 <div class="panel">
                     <div class="table-toolbar">
                         <input type="text" id="history-search" class="search-input" oninput="filterHistory(this.value)" placeholder="&#128269; Search by item, user, destination…">
+                        <button class="btn-export" onclick="exportHistoryCSV()" title="Download CSV"><i class="fas fa-download"></i> Export CSV</button>
                     </div>
                     <table class="data-table">
                         <thead>
@@ -124,6 +128,11 @@
                         </thead>
                         <tbody id="history-body"></tbody>
                     </table>
+                    <div class="pagination-controls" id="history-pagination" style="display:none;">
+                        <button id="pag-prev" class="btn-pag" onclick="loadHistoryPage(histPage - 1)">&#8249; Prev</button>
+                        <span id="pag-info" class="pag-info"></span>
+                        <button id="pag-next" class="btn-pag" onclick="loadHistoryPage(histPage + 1)">Next &#8250;</button>
+                    </div>
                 </div>
             </div>
         </main>
@@ -142,15 +151,54 @@
                 </div>
                 <div id="out-logic">
                     <div class="guardrail-warning mb-3"><i class="fas fa-shield-alt"></i> Traceability Required</div>
-                    <div class="form-group"><label>Destination *</label><input type="text" id="trans-destination" placeholder="e.g. Repair Lab, Workshop A"></div>
+                    <div class="form-group">
+                        <label>Destination *</label>
+                        <input type="text" id="trans-destination" list="dest-options" placeholder="e.g. Repair Lab, Workshop A" autocomplete="off">
+                        <datalist id="dest-options">
+                            <option value="Repair Lab"></option>
+                            <option value="Workshop A"></option>
+                            <option value="Workshop B"></option>
+                            <option value="Warehouse Storage"></option>
+                            <option value="Assembly Floor"></option>
+                            <option value="Maintenance Bay"></option>
+                            <option value="Quality Control"></option>
+                            <option value="Shipping Dock"></option>
+                        </datalist>
+                    </div>
                     <div class="form-group"><label>Purpose / Work Order</label><input type="text" id="trans-purpose" placeholder="e.g. WO-12345"></div>
                 </div>
                 <div id="in-logic" style="display:none;">
-                    <div class="form-group"><label>Source / Vendor</label><input type="text" id="trans-source" placeholder="e.g. Siemens, Direct Purchase"></div>
+                    <div class="form-group"><label>Source / Vendor <span style="color:var(--color-red)">*</span></label><input type="text" id="trans-source" placeholder="e.g. Siemens, Direct Purchase"></div>
                 </div>
                 <div class="modal-actions mt-4">
                     <button type="button" class="btn-cancel" onclick="closeTransModal()">Cancel</button>
                     <button type="submit" class="btn-primary">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- TC-52/53/54: Edit Item Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <h3>Edit Item: <span id="edit-code-display"></span></h3>
+            <input type="hidden" id="edit-code">
+            <form id="editForm">
+                <div class="form-grid">
+                    <div class="form-group"><label>Name *</label><input type="text" id="edit-name" required></div>
+                    <div class="form-group"><label>Details</label><input type="text" id="edit-desc" placeholder="Specs, notes…"></div>
+                    <div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor"></div>
+                    <div class="form-group"><label>Delivery Date</label><input type="date" id="edit-delivery"></div>
+                    <div class="form-group"><label>Allocated Stock</label><input type="number" id="edit-qty" min="0" value="0"></div>
+                    <div class="form-group"><label>Min Threshold</label><input type="number" id="edit-min" min="0" value="0"></div>
+                    <div class="form-group"><label>Max Ceiling</label><input type="number" id="edit-max" min="0" value="999"></div>
+                    <div class="form-group"><label>Warranty Start</label><input type="date" id="edit-warranty-start"></div>
+                    <div class="form-group"><label>Warranty End</label><input type="date" id="edit-warranty-end"></div>
+                </div>
+                <div class="modal-actions mt-4">
+                    <button type="button" class="btn-cancel" onclick="closeEditModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Changes</button>
                 </div>
             </form>
         </div>

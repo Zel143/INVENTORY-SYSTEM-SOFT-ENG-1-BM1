@@ -288,9 +288,63 @@ app.delete('/api/inventory/:code', requireAdmin, async (req, res) => {
     try {
         const item = (await pool.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
         if (!item) return res.status(404).json({ error: 'Item not found' });
+
+        // TC-58: Log deletion to audit trail BEFORE removing the item
+        await pool.query(`
+            INSERT INTO transactions (inventory_code, transaction_type, quantity_change, actor_id, actor_name, purpose)
+            VALUES ($1, 'deletion', $2, $3, $4, 'Item permanently deleted')
+        `, [item.code, -item.current_stock, req.session.user.id, req.session.user.username]);
+
         await pool.query('DELETE FROM inventory WHERE code = $1', [req.params.code]);
         broadcast('inventory:updated', { code: req.params.code, deleted: true });
         res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// TC-52 / TC-53 / TC-54: Edit item metadata (admin only)
+app.put('/api/inventory/:code/details', requireAdmin, async (req, res) => {
+    const { name, description, vendor, delivery_date, max_ceiling, min_threshold,
+            warranty_start, warranty_end, allocated_stock } = req.body;
+
+    const ceil   = parseInt(max_ceiling)    || 999;
+    const thresh = parseInt(min_threshold)  || 0;
+    const alloc  = allocated_stock !== undefined ? parseInt(allocated_stock) : undefined;
+
+    // TC-50: Warranty date cross-check
+    if (warranty_start && warranty_end && warranty_end < warranty_start) {
+        return res.status(400).json({ error: 'Warranty end date must be after warranty start date' });
+    }
+
+    try {
+        // Fetch current stock so we can validate allocation
+        const current = (await pool.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
+        if (!current) return res.status(404).json({ error: 'Item not found' });
+
+        const newAlloc = alloc !== undefined ? alloc : current.allocated_stock;
+        if (newAlloc < 0)                           return res.status(400).json({ error: 'Allocated stock cannot be negative' });
+        if (newAlloc > current.current_stock)       return res.status(400).json({ error: 'Allocated stock cannot exceed physical stock' });
+
+        await pool.query(`
+            UPDATE inventory SET
+                name            = COALESCE($1, name),
+                description     = COALESCE($2, description),
+                vendor          = COALESCE($3, vendor),
+                delivery_date   = COALESCE($4, delivery_date),
+                max_ceiling     = $5,
+                min_threshold   = $6,
+                warranty_start  = $7,
+                warranty_end    = $8,
+                allocated_stock = $9
+            WHERE code = $10
+        `, [name || null, description || null, vendor || null, delivery_date || null,
+            ceil, thresh, warranty_start || null, warranty_end || null,
+            newAlloc, req.params.code]);
+
+        const updated = (await pool.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
+        broadcast('inventory:updated', { code: req.params.code });
+        res.json({ success: true, item: updated });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
