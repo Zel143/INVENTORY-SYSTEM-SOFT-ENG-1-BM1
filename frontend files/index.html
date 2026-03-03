@@ -16,7 +16,7 @@
 
     <div class="login-container">
         
-        <form id="loginForm" action="api/login.php" method="POST">
+        <form id="loginForm" method="POST">
             <h2>Welcome</h2>
             <div class="form-group">
                 <input type="text" id="username" name="username" class="input-field" placeholder="Username" required>
@@ -73,22 +73,18 @@
     </div>
 
     <script>
-        // --- 1. MERGED: Password Toggle Logic ---
-        const togglePassword = document.querySelector('#togglePassword');
-        const password = document.querySelector('#password');
-        const eyeIcon = document.querySelector('#eyeIcon');
-
-        togglePassword.addEventListener('click', function () {
-            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
-            password.setAttribute('type', type);
-            // Toggle eye icon class
-            eyeIcon.classList.toggle('fa-eye');
-            eyeIcon.classList.toggle('fa-eye-slash');
+        // --- 1. Password Toggle ---
+        document.querySelector('#togglePassword').addEventListener('click', function () {
+            const pwd  = document.querySelector('#password');
+            const icon = document.querySelector('#eyeIcon');
+            pwd.type = pwd.type === 'password' ? 'text' : 'password';
+            icon.classList.toggle('fa-eye');
+            icon.classList.toggle('fa-eye-slash');
         });
 
-        // --- 2. Form Switching Logic ---
-        const loginForm = document.getElementById('loginForm');
-        const resetForm = document.getElementById('resetForm');
+        // --- 2. Form references ---
+        const loginForm      = document.getElementById('loginForm');
+        const resetForm      = document.getElementById('resetForm');
         const verifyCodeForm = document.getElementById('verifyCodeForm');
 
         document.getElementById('forgotLink').addEventListener('click', (e) => {
@@ -100,13 +96,13 @@
         document.querySelectorAll('.backToLoginLink').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                resetForm.style.display = 'none';
+                resetForm.style.display      = 'none';
                 verifyCodeForm.style.display = 'none';
-                loginForm.style.display = 'block';
+                loginForm.style.display      = 'block';
             });
         });
 
-        // --- 3. Login via API ---
+        // --- 3. Login via API (with distinct lockout handling) ---
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn  = document.getElementById('loginBtn');
@@ -126,45 +122,137 @@
 
                 if (res.ok) {
                     window.location.href = 'dashboard.html';
+                } else if (res.status === 429) {
+                    // TC-10: Account locked — prominent styled error
+                    showLoginError('🔒 ' + (data.error || 'Account locked. Contact your administrator.'), true);
                 } else {
-                    showLoginError(data.error || 'Login failed');
+                    showLoginError(data.error || 'Login failed', false);
                 }
             } catch {
-                showLoginError('Cannot connect to server. Make sure the backend is running.');
+                showLoginError('Cannot connect to server. Make sure the backend is running.', false);
             } finally {
                 btn.textContent = 'Login';
                 btn.disabled    = false;
             }
         });
 
-        function showLoginError(msg) {
+        function showLoginError(msg, locked) {
             let err = document.getElementById('login-error');
             if (!err) {
                 err = document.createElement('p');
                 err.id = 'login-error';
-                err.style.cssText = 'color:#ff6b6b;font-size:0.85rem;margin-top:-10px;margin-bottom:10px;text-align:center;';
                 loginForm.querySelector('.form-group').after(err);
+            }
+            if (locked) {
+                err.style.cssText =
+                    'color:#ff4444;font-size:0.85rem;margin-top:-10px;margin-bottom:10px;' +
+                    'text-align:center;font-weight:600;background:rgba(255,68,68,0.12);' +
+                    'padding:8px 12px;border-radius:6px;border:1px solid rgba(255,68,68,0.35);';
+            } else {
+                err.style.cssText =
+                    'color:#ff6b6b;font-size:0.85rem;margin-top:-10px;margin-bottom:10px;text-align:center;';
             }
             err.textContent = msg;
         }
 
-        resetForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            alert("Simulation: Access code '123456' sent.");
-            resetForm.style.display = 'none';
-            verifyCodeForm.style.display = 'block';
-        });
+        // --- 4. Forgot Password — server-side code generation ---
+        let resetEmailTarget = '';
 
-        verifyCodeForm.addEventListener('submit', (e) => {
+        resetForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (document.getElementById('accessCode').value === '123456') {
-                alert("Code verified — please log in with your credentials.");
-                verifyCodeForm.style.display = 'none';
-                loginForm.style.display = 'block';
-            } else {
-                alert("Wrong code. Try: 123456");
+            const btn   = resetForm.querySelector('button[type="submit"]');
+            const email = document.getElementById('resetEmail').value.trim();
+
+            btn.textContent = 'Sending…';
+            btn.disabled    = true;
+
+            try {
+                const res  = await fetch('/api/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    resetEmailTarget = email;
+                    const note = data.dev_code
+                        ? `Code (dev mode): ${data.dev_code}`
+                        : 'Access code sent to your email.';
+                    showResetMsg(note, false);
+                    setTimeout(() => {
+                        resetForm.style.display      = 'none';
+                        verifyCodeForm.style.display = 'block';
+                    }, 1000);
+                } else {
+                    showResetMsg(data.error || 'Could not send code.', true);
+                }
+            } catch {
+                showResetMsg('Cannot connect to server.', true);
+            } finally {
+                btn.textContent = 'Send Access Code';
+                btn.disabled    = false;
             }
         });
+
+        function showResetMsg(msg, isError) {
+            let el = document.getElementById('reset-msg');
+            if (!el) {
+                el = document.createElement('p');
+                el.id = 'reset-msg';
+                el.style.cssText = 'font-size:0.85rem;text-align:center;margin-bottom:8px;';
+                resetForm.querySelector('.reset-instruction').after(el);
+            }
+            el.style.color = isError ? '#ff6b6b' : '#68d391';
+            el.textContent = msg;
+        }
+
+        // --- 5. Verify Reset Code — server-side validation ---
+        verifyCodeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn  = verifyCodeForm.querySelector('button[type="submit"]');
+            const code = document.getElementById('accessCode').value.trim();
+
+            btn.textContent = 'Verifying…';
+            btn.disabled    = true;
+
+            try {
+                const res  = await fetch('/api/verify-reset-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: resetEmailTarget, code })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    showVerifyMsg('Code verified — please log in.', false);
+                    setTimeout(() => {
+                        verifyCodeForm.style.display = 'none';
+                        loginForm.style.display      = 'block';
+                        document.getElementById('accessCode').value = '';
+                    }, 1200);
+                } else {
+                    showVerifyMsg(data.error || 'Incorrect code.', true);
+                }
+            } catch {
+                showVerifyMsg('Cannot connect to server.', true);
+            } finally {
+                btn.textContent = 'Verify & Login';
+                btn.disabled    = false;
+            }
+        });
+
+        function showVerifyMsg(msg, isError) {
+            let el = document.getElementById('verify-msg');
+            if (!el) {
+                el = document.createElement('p');
+                el.id = 'verify-msg';
+                el.style.cssText = 'font-size:0.85rem;text-align:center;margin-bottom:8px;';
+                verifyCodeForm.querySelector('.reset-instruction').after(el);
+            }
+            el.style.color = isError ? '#ff6b6b' : '#68d391';
+            el.textContent = msg;
+        }
     </script>
 </body>
 </html>

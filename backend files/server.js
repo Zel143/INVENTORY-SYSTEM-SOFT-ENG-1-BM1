@@ -40,6 +40,8 @@ app.use(session({
 const loginAttempts = new Map();  // username → count  (TC-10 lockout)
 const MAX_ATTEMPTS = 5;
 
+const resetCodes = new Map();    // email → { code, expires }  (password reset)
+
 function requireAuth(req, res, next) {
     if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
     next();
@@ -136,6 +138,77 @@ app.post('/api/register', async (req, res) => {
         if (err.code === '23505') return res.status(400).json({ error: 'Email already registered' });
         res.status(500).json({ error: err.message });
     }
+});
+
+// Password Reset — Step 1: generate 6-digit code (15-min TTL)
+app.post('/api/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    try {
+        const user = (await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()])).rows[0];
+        if (!user) {
+            // Vague on purpose — prevents email enumeration
+            return res.json({ success: true, message: 'If that email is registered, a code has been sent.' });
+        }
+
+        const code    = String(Math.floor(100000 + Math.random() * 900000));
+        const expires = Date.now() + 15 * 60 * 1000;  // 15 minutes
+        resetCodes.set(email.toLowerCase(), { code, expires });
+
+        // In production wire a real email service here.
+        // In development we return the code directly so testers can use it.
+        const isDev = process.env.NODE_ENV !== 'production';
+        console.log(`[Password Reset] Code for ${email}: ${code}  (expires in 15 min)`);
+
+        res.json({
+            success: true,
+            message: 'Access code generated.',
+            ...(isDev ? { dev_code: code } : {})
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Password Reset — Step 2: verify code
+app.post('/api/verify-reset-code', (req, res) => {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
+
+    const entry = resetCodes.get(email.toLowerCase());
+    if (!entry) {
+        return res.status(400).json({ error: 'No reset code found. Please request a new one.' });
+    }
+    if (Date.now() > entry.expires) {
+        resetCodes.delete(email.toLowerCase());
+        return res.status(400).json({ error: 'Code has expired. Please request a new one.' });
+    }
+    if (entry.code !== String(code).trim()) {
+        return res.status(400).json({ error: 'Incorrect code. Please try again.' });
+    }
+
+    resetCodes.delete(email.toLowerCase());  // single-use
+    res.json({ success: true, message: 'Code verified. You may now log in.' });
+});
+
+// Admin — list all locked / failed-attempt accounts (TC-10 recovery)
+app.get('/api/admin/lockouts', requireAdmin, (req, res) => {
+    const list = [];
+    for (const [username, attempts] of loginAttempts.entries()) {
+        list.push({ username, attempts, locked: attempts >= MAX_ATTEMPTS });
+    }
+    res.json(list);
+});
+
+// Admin — clear a specific account's lockout counter
+app.delete('/api/admin/lockout/:username', requireAdmin, (req, res) => {
+    const { username } = req.params;
+    if (!loginAttempts.has(username)) {
+        return res.status(404).json({ error: `No lockout record found for '${username}'` });
+    }
+    loginAttempts.delete(username);
+    res.json({ success: true, message: `Lockout cleared for '${username}'` });
 });
 
 // ===================== INVENTORY ROUTES =====================
