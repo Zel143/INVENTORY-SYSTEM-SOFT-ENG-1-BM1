@@ -37,8 +37,9 @@ app.use(session({
 }));
 
 // ===================== AUTH HELPERS =====================
-const loginAttempts = new Map();  // username → count  (TC-10 lockout)
+const loginAttempts = new Map();  // username → { count, firstAttempt }  (TC-10 lockout)
 const MAX_ATTEMPTS = 5;
+const LOCKOUT_WINDOW_MS = 15 * 60 * 1000; // 15-minute rolling window — auto-resets (TC-10)
 
 const resetCodes = new Map();    // email → { code, expires }  (password reset)
 
@@ -73,21 +74,36 @@ app.post('/api/login', async (req, res) => {
         return res.status(400).json({ error: 'Username and password required' });
     }
 
-    // TC-10: Lockout check
-    const attempts = loginAttempts.get(username) || 0;
-    if (attempts >= MAX_ATTEMPTS) {
-        return res.status(429).json({ error: 'Account locked due to too many failed attempts. Try again later.' });
+    // TC-10: Lockout check with 15-minute rolling window
+    const now = Date.now();
+    const record = loginAttempts.get(username) || { count: 0, firstAttempt: now };
+    // Auto-reset counter if the lockout window has expired
+    if (now - record.firstAttempt >= LOCKOUT_WINDOW_MS) {
+        record.count = 0;
+        record.firstAttempt = now;
+    }
+    if (record.count >= MAX_ATTEMPTS) {
+        const waitMins = Math.ceil((LOCKOUT_WINDOW_MS - (now - record.firstAttempt)) / 60000);
+        return res.status(429).json({
+            error: `Account locked. Too many failed attempts. Try again in ${waitMins} minute${waitMins !== 1 ? 's' : ''}.`
+        });
     }
 
     try {
-        // TC-11: Exact case match
+        // TC-11: Exact case match — PostgreSQL $1 is case-sensitive
         const user = (await pool.query('SELECT * FROM users WHERE username = $1', [username])).rows[0];
 
         // TC-12: bcrypt comparison prevents SQL injection / timing attacks
         if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-            const newCount = attempts + 1;
-            loginAttempts.set(username, newCount);
-            const remaining = MAX_ATTEMPTS - newCount;
+            record.count += 1;
+            loginAttempts.set(username, record);
+            const remaining = MAX_ATTEMPTS - record.count;
+            // On the 5th failure immediately return 429 (locked), not "0 remaining"
+            if (remaining <= 0) {
+                return res.status(429).json({
+                    error: 'Account locked. Too many failed attempts. Try again in 15 minutes.'
+                });
+            }
             return res.status(401).json({
                 error: `Invalid credentials. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`
             });
@@ -194,9 +210,22 @@ app.post('/api/verify-reset-code', (req, res) => {
 
 // Admin — list all locked / failed-attempt accounts (TC-10 recovery)
 app.get('/api/admin/lockouts', requireAdmin, (req, res) => {
+    const now = Date.now();
     const list = [];
-    for (const [username, attempts] of loginAttempts.entries()) {
-        list.push({ username, attempts, locked: attempts >= MAX_ATTEMPTS });
+    for (const [username, record] of loginAttempts.entries()) {
+        const expired = (now - record.firstAttempt) >= LOCKOUT_WINDOW_MS;
+        if (!expired) {
+            const waitMins = Math.ceil((LOCKOUT_WINDOW_MS - (now - record.firstAttempt)) / 60000);
+            list.push({
+                username,
+                attempts: record.count,
+                locked: record.count >= MAX_ATTEMPTS,
+                lockedUntil: record.count >= MAX_ATTEMPTS
+                    ? new Date(record.firstAttempt + LOCKOUT_WINDOW_MS).toISOString()
+                    : null,
+                minutesRemaining: record.count >= MAX_ATTEMPTS ? waitMins : null
+            });
+        }
     }
     res.json(list);
 });

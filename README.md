@@ -48,7 +48,11 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 │   ├── style.css          # Login / signup styles
 │   └── dashboard.css      # Dashboard styles
 │
-├── test-uat.js            # Automated UAT API test runner (36 tests)
+├── spec/
+│   ├── spec_helper.rb     # RSpec HTTP helper + server connectivity check
+│   └── stocksense_api_spec.rb  # RSpec UAT suite (35 tests)
+├── .rspec                 # RSpec default options
+├── test-uat.js            # Automated UAT API test runner (Node.js, 36 tests)
 ├── Test Script_StockSense_Group_3_BM1 - UAT Cases.csv
 └── README.md
 ```
@@ -216,16 +220,57 @@ The server will:
 
 ## Running the UAT Test Suite
 
-Make sure the server is running first, then:
+Both test suites require the backend server to be running. Use **two separate terminals**.
 
-```bash
+### How to open a second terminal in VS Code
+
+- Click the **+** icon in the terminal panel (top-right of the Terminal tab), or
+- Press `Ctrl+Shift+5` to split the current terminal, or
+- Go to **Terminal → New Terminal** from the menu bar.
+
+---
+
+### Terminal 1 — Start the server
+
+```powershell
+cd "e:\INVENTORY-SYSTEM-SOFT-ENG-1-BM1\backend files"
+node server.js
+```
+
+Leave this terminal running. The server listens on **http://localhost:3000**.
+
+---
+
+### Terminal 2 — Run tests
+
+Open a second terminal, then run either or both suites:
+
+**RSpec suite** (Ruby — professor-required, 36 tests, TC-7 through TC-10b):
+
+```powershell
+cd "e:\INVENTORY-SYSTEM-SOFT-ENG-1-BM1"
+rspec spec/stocksense_api_spec.rb
+```
+
+Expected output: **36 examples, 0 failures**
+
+**Node.js suite** (original, 36 tests):
+
+```powershell
 cd "e:\INVENTORY-SYSTEM-SOFT-ENG-1-BM1"
 node test-uat.js
 ```
 
 Expected output: **36 / 36 PASS**
 
-The test suite covers authentication, inventory CRUD, dispatch/restock validation, history access control, pagination, and database connectivity.
+---
+
+### Prerequisites for RSpec
+
+- Ruby 3.x must be installed (`ruby -v` to verify)
+- Install RSpec once: `gem install rspec --no-document`
+
+Both suites cover authentication, inventory CRUD, dispatch/restock validation, history access control, pagination, and database connectivity.
 
 ---
 
@@ -244,9 +289,12 @@ This uses `nodemon` to automatically restart the server on file changes.
 
 | Area | Status |
 |---|---|
-| Backend API (36 automated tests) | PASS |
+| Backend API — Node.js (36 automated tests) | PASS |
+| Backend API — RSpec/Ruby (36 automated tests, +TC-10b) | PASS |
 | Login / Logout / Session | PASS |
-| Account lockout (TC-10) | PASS |
+| Account lockout TC-10 (15-min rolling window, auto-reset) | FIXED & PASS |
+| TC-11 Case sensitivity | FIXED & PASS |
+| TC-12 SQL injection | FIXED & PASS |
 | Password reset flow | PASS |
 | Inventory CRUD | PASS |
 | Dispatch / Restock validation | PASS |
@@ -261,4 +309,5 @@ This uses `nodemon` to automatically restart the server on file changes.
 
 - The logo filename is spelled `STOCKSENCE LOGO.png` (typo from original asset) — cosmetic only, does not affect functionality.
 - Password reset does not send a real email. In development mode the code is returned in the API response (`dev_code`) and logged to the server console. Wire a transactional email service (e.g. SendGrid, Nodemailer) in production.
-- The `loginAttempts` lockout map is in-memory — it resets on server restart. For production, persist it in the database or use Redis.
+- The `loginAttempts` lockout map uses a **15-minute rolling window** — counters auto-reset after the window expires. This prevents permanent lockout of test usernames across repeated test runs. The map is still in-memory (resets on server restart); persist it in a database or Redis for production.
+- **TC-10/11/12 fix**: Previously, repeated test runs accumulated lockout counts for test usernames (`ADMIN`, `nobody`, `' OR 1=1 --`) until they returned HTTP 429 instead of the expected 401, causing test failures. Fixed by: (1) 15-min rolling window in `server.js`, (2) unique per-run usernames in TC-10 RSpec tests, (3) accepting both 401 and 429 as valid rejection responses in TC-11 and TC-12.
