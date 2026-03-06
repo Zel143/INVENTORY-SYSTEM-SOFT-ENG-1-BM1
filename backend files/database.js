@@ -4,11 +4,12 @@ const bcrypt = require('bcryptjs');
 
 // ===================== CONNECTION POOL =====================
 const pool = new Pool({
-    host:     process.env.PG_HOST     || 'localhost',
-    port:     parseInt(process.env.PG_PORT) || 5432,
-    database: process.env.PG_DATABASE || 'stocksense',
-    user:     process.env.PG_USER     || 'postgres',
-    password: process.env.PG_PASSWORD || 'postgres',
+    connectionString: process.env.DATABASE_URL,
+    ssl:              { rejectUnauthorized: false },
+    max:                     3,       // keep within Supabase free-tier pooler limits
+    connectionTimeoutMillis: 30000,   // 30 s — allows for Supabase cold-start
+    idleTimeoutMillis:       60000,   // 60 s — below Supabase's 300 s idle limit
+    allowExitOnIdle:         false,
 });
 
 // ===================== INIT (async) =====================
@@ -149,7 +150,8 @@ async function initDB() {
             console.log('[DB] Sample inventory data seeded (5 items)');
         }
 
-        console.log('[DB] PostgreSQL connected and schema ready (port 5432)');
+        const dbUrl = new URL(process.env.DATABASE_URL);
+        console.log(`[DB] PostgreSQL connected and schema ready (${dbUrl.host}${dbUrl.pathname})`);
     } finally {
         client.release();
     }

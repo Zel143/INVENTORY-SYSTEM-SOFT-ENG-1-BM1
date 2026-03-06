@@ -543,15 +543,32 @@ app.get('/api/events', requireAuth, (req, res) => {
 });
 
 // ===================== START =====================
-initDB().then(() => {
-    app.listen(PORT, () => {
-        console.log(`\n✅  StockSense is running → http://localhost:${PORT}`);
-        console.log(`    Database: PostgreSQL (localhost:5432/stocksense)`);
-        console.log(`    Login with:  admin / admin   (Administrator)`);
-        console.log(`                 staff / staff   (Staff User)\n`);
-    });
-}).catch(err => {
-    console.error('❌  Failed to initialize database:', err.message);
-    console.error('    Make sure PostgreSQL is running and .env credentials are correct.');
-    process.exit(1);
-});
+async function startServer(retries = 5, delayMs = 5000) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            await initDB();
+            app.listen(PORT, () => {
+                console.log(`\n✅  StockSense is running → http://localhost:${PORT}`);
+                console.log(`    Database: ${process.env.PG_HOST}:${process.env.PG_PORT || 5432}/${process.env.PG_DATABASE || 'postgres'}`);
+                console.log(`    Login with:  admin / admin   (Administrator)`);
+                console.log(`                 staff / staff   (Staff User)\n`);
+            });
+            return; // success — exit the retry loop
+        } catch (err) {
+            console.error(`❌  DB init failed (attempt ${attempt}/${retries}): ${err.message}`);
+            if (attempt < retries) {
+                console.error(`    Retrying in ${delayMs / 1000}s…`);
+                await new Promise(r => setTimeout(r, delayMs));
+            } else {
+                console.error('    All retries exhausted. Check Supabase credentials in .env');
+                console.error(`    PG_HOST=${process.env.PG_HOST}`);
+                console.error(`    PG_PORT=${process.env.PG_PORT}`);
+                console.error(`    PG_USER=${process.env.PG_USER}`);
+                console.error(`    PG_DATABASE=${process.env.PG_DATABASE}`);
+                process.exit(1);
+            }
+        }
+    }
+}
+
+startServer();
