@@ -29,38 +29,69 @@
     </div>
 
     <script>
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        // Redirect to dashboard if already authenticated
+        fetch('/api/session')
+            .then(r => r.json())
+            .then(d => { if (d.authenticated) window.location.href = 'dashboard.html'; })
+            .catch(() => {});
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
-            const user = document.getElementById('username');
-            const pass = document.getElementById('password');
-            const btn = document.getElementById('loginBtn');
-            
-            // Hardcoded Credentials for Frontend Demo
-            if (user.value === "admin" && pass.value === "admin") {
-                // Set a session flag
-                sessionStorage.setItem("stocksense_logged_in", "true");
-                sessionStorage.setItem("stocksense_user", "admin");
-                window.location.href = "dashboard.html";
-            } else {
-                // Error State
-                user.classList.add('error');
-                user.value = "Wrong Username";
-                pass.classList.add('error');
-                pass.type = "text";
-                pass.value = "Wrong Password";
-                btn.innerText = "Unable to Login";
-                btn.classList.add('error-btn');
-                
-                // Reset logic on focus
-                user.onfocus = function() { 
-                    if(this.value.includes('Wrong')) { this.value = ''; this.classList.remove('error'); }
-                };
-                pass.onfocus = function() { 
-                    if(this.value.includes('Wrong')) { this.value = ''; this.type='password'; this.classList.remove('error'); }
-                };
+
+            const userEl = document.getElementById('username');
+            const passEl = document.getElementById('password');
+            const btn    = document.getElementById('loginBtn');
+
+            const username = userEl.value.trim();
+            const password = passEl.value;
+
+            if (!username || !password) {
+                showError(userEl, passEl, btn, 'Fill in both fields');
+                return;
+            }
+
+            btn.innerText  = 'Logging in…';
+            btn.disabled   = true;
+
+            try {
+                const res  = await fetch('/api/login', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    window.location.href = 'dashboard.html';
+                } else {
+                    const msg = data.error || 'Login failed';
+                    showError(userEl, passEl, btn, msg);
+                }
+            } catch (_) {
+                showError(userEl, passEl, btn, 'Network error — is the server running?');
             }
         });
+
+        function showError(userEl, passEl, btn, message) {
+            userEl.classList.add('error');
+            passEl.classList.add('error');
+            btn.innerText  = message;
+            btn.disabled   = false;
+            btn.classList.add('error-btn');
+
+            userEl.onfocus = function() {
+                this.classList.remove('error');
+                passEl.classList.remove('error');
+                btn.innerText = 'Login';
+                btn.classList.remove('error-btn');
+            };
+            passEl.onfocus = function() {
+                userEl.classList.remove('error');
+                this.classList.remove('error');
+                btn.innerText = 'Login';
+                btn.classList.remove('error-btn');
+            };
+        }
     </script>
 </body>
 </html>
