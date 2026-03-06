@@ -8,40 +8,73 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+    <!-- Sidebar overlay (mobile) -->
+    <aside class="sidebar">
+        <button class="nav-item active" data-tab="tracker" onclick="switchTab('tracker',this)">
+            <i class="fas fa-bell"></i> Stock Alerts
+        </button>
+        <button class="nav-item" data-tab="inventory" onclick="switchTab('inventory',this)">
+            <i class="fas fa-boxes"></i> Inventory
+        </button>
+        <button class="nav-item admin-only" data-tab="log-stocks" onclick="switchTab('log-stocks',this)">
+            <i class="fas fa-plus-square"></i> Log Stocks
+        </button>
+        <button class="nav-item" data-tab="history" onclick="switchTab('history',this)">
+            <i class="fas fa-history"></i> Transaction History
+        </button>
+    </aside>
+
     <div class="dashboard-container">
         <header class="dashboard-header">
             <div class="header-left">
+                <button class="hamburger-btn" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
+                    <i class="fas fa-bars"></i>
+                </button>
                 <img src="STOCKSENCE LOGO.png" alt="StockSense Logo" class="brand-logo">
                 <h1>StockSense</h1>
             </div>
             <div class="header-right">
+                <span id="user-display" class="user-display"></span>
                 <div class="theme-switch">
                     <input type="checkbox" id="checkbox">
                     <label for="checkbox" class="switch"></label>
                 </div>
-                <button class="logout-btn" onclick="logout()">Logout</button>
+                <button class="logout-btn" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
             </div>
         </header>
 
         <nav class="nav-tabs">
-            <button class="nav-item active" onclick="switchTab('tracker', this)">Stock Alerts</button>
-            <button class="nav-item" onclick="switchTab('inventory', this)">Inventory</button>
-            <button class="nav-item" onclick="switchTab('history', this)">Transaction History</button>
+            <button class="nav-item active" data-tab="tracker" onclick="switchTab('tracker',this)">
+                <i class="fas fa-bell"></i> Stock Alerts
+            </button>
+            <button class="nav-item" data-tab="inventory" onclick="switchTab('inventory',this)">
+                <i class="fas fa-boxes"></i> Inventory
+            </button>
+            <button class="nav-item admin-only" data-tab="log-stocks" onclick="switchTab('log-stocks',this)">
+                <i class="fas fa-plus-square"></i> Log Stocks
+            </button>
+            <button class="nav-item" data-tab="history" onclick="switchTab('history',this)">
+                <i class="fas fa-history"></i> Transaction History
+            </button>
         </nav>
 
         <main class="main-content">
-            <!-- Stock Alerts View -->
+
+            <!-- ================= STOCK ALERTS VIEW ================= -->
             <section id="view-tracker" class="view-section">
                 <h2>Stock Alerts</h2>
                 <div id="tracker-grid" class="tracker-grid"></div>
             </section>
 
-            <!-- Inventory View -->
-            <section id="view-inventory" class="view-section" style="display: none;">
+            <!-- ================= INVENTORY VIEW ================= -->
+            <section id="view-inventory" class="view-section" style="display:none;">
                 <div class="inventory-header">
                     <h2>Inventory Management</h2>
                     <div class="search-container">
-                        <input type="text" id="search-input" placeholder="Search items..." onkeyup="handleSearch(this.value)">
+                        <input type="text" id="search-input" placeholder="Search by name, code or vendor&hellip;"
+                               oninput="filterInventory(this.value)">
                         <i class="fas fa-search search-icon"></i>
                     </div>
                 </div>
@@ -49,10 +82,17 @@
                     <table class="inventory-table">
                         <thead>
                             <tr>
-                                <th>Item</th>
+                                <th onclick="sortTable('name')" style="cursor:pointer;">
+                                    Item <i class="fas fa-sort"></i>
+                                </th>
                                 <th>Status</th>
-                                <th>Quantity</th>
-                                <th>Expiry</th>
+                                <th onclick="sortTable('current_stock')" style="cursor:pointer;">
+                                    Qty <i class="fas fa-sort"></i>
+                                </th>
+                                <th onclick="sortTable('warranty_end')" style="cursor:pointer;">
+                                    Expiry <i class="fas fa-sort"></i>
+                                </th>
+                                <th>Warranty</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -61,51 +101,165 @@
                 </div>
             </section>
 
-            <!-- History View -->
-            <section id="view-history" class="view-section" style="display: none;">
-                <h2>Transaction History</h2>
+            <!-- ================= LOG STOCKS VIEW (Admin only) ================= -->
+            <section id="view-log-stocks" class="view-section admin-only" style="display:none;">
+                <h2>Log New Stock Item</h2>
+                <div class="form-card">
+                    <form id="add-item-form" autocomplete="off">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="add-code">SKU / Item Code <span class="required">*</span></label>
+                                <input type="text" id="add-code" placeholder="e.g. MCH-001" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="add-name">Item Name <span class="required">*</span></label>
+                                <input type="text" id="add-name" placeholder="e.g. Safety Helmet" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="add-vendor">Vendor / Supplier</label>
+                                <input type="text" id="add-vendor" placeholder="Supplier name">
+                            </div>
+                            <div class="form-group">
+                                <label for="add-qty">Initial Quantity <span class="required">*</span></label>
+                                <input type="number" id="add-qty" min="0" value="0" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="add-min">Safety Stock (min threshold)</label>
+                                <input type="number" id="add-min" min="0" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="add-max">Max Ceiling</label>
+                                <input type="number" id="add-max" min="0" placeholder="Leave blank if no ceiling">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="add-warranty-start">Warranty Start</label>
+                                <input type="date" id="add-warranty-start">
+                            </div>
+                            <div class="form-group">
+                                <label for="add-warranty-end">Warranty End / Expiry</label>
+                                <input type="date" id="add-warranty-end">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="add-delivery">Delivery Date</label>
+                                <input type="date" id="add-delivery">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="reset" class="btn-secondary">Clear</button>
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-plus"></i> Add Item
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- ================= TRANSACTION HISTORY VIEW (Admin only) ================= -->
+            <section id="view-history" class="view-section admin-only" style="display:none;">
+                <div class="inventory-header">
+                    <h2>Transaction History</h2>
+                    <div class="history-controls">
+                        <div class="search-container">
+                            <input type="text" id="history-search" placeholder="Filter by item or user&hellip;"
+                                   oninput="filterHistory(this.value)">
+                            <i class="fas fa-search search-icon"></i>
+                        </div>
+                        <button class="btn-export" onclick="exportHistoryCSV()">
+                            <i class="fas fa-download"></i> Export CSV
+                        </button>
+                    </div>
+                </div>
                 <div class="table-container">
                     <table class="history-table">
                         <thead>
                             <tr>
-                                <th>Time</th>
+                                <th onclick="sortHistory('timestamp')" style="cursor:pointer;">
+                                    Time <i class="fas fa-sort"></i>
+                                </th>
                                 <th>User</th>
                                 <th>Item</th>
-                                <th>Change</th>
+                                <th>Type</th>
+                                <th onclick="sortHistory('quantity_change')" style="cursor:pointer;">
+                                    Change <i class="fas fa-sort"></i>
+                                </th>
                                 <th>Details</th>
                             </tr>
                         </thead>
                         <tbody id="history-list"></tbody>
                     </table>
                 </div>
+                <div class="pagination" id="pagination-controls">
+                    <button id="pag-prev" onclick="loadHistoryPage(histPage-1)" disabled>
+                        <i class="fas fa-chevron-left"></i> Prev
+                    </button>
+                    <span id="pag-info">Page 1</span>
+                    <button id="pag-next" onclick="loadHistoryPage(histPage+1)">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
             </section>
+
         </main>
     </div>
 
-    <!-- Transaction Modal -->
-    <div id="transModal" class="modal">
+    <!-- ================= TRANSACTION MODAL ================= -->
+    <div id="transModal" class="modal" style="display:none;" onclick="if(event.target===this)closeTransModal()">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="trans-title">Transaction</h3>
-                <span class="close" onclick="closeModal()">&times;</span>
+                <div>
+                    <h3 id="trans-title">Transaction</h3>
+                    <small id="trans-subtitle" class="text-muted"></small>
+                </div>
+                <span class="close" onclick="closeTransModal()">&times;</span>
             </div>
-            <form id="transForm">
-                <input type="hidden" id="trans-id">
+            <form id="trans-form" autocomplete="off">
+                <input type="hidden" id="trans-code">
+                <input type="hidden" id="trans-type">
+
                 <div class="form-group">
-                    <label for="trans-change">Quantity:</label>
-                    <input type="number" id="trans-change" min="1" required>
+                    <label for="trans-qty">Quantity <span class="required">*</span></label>
+                    <input type="number" id="trans-qty" min="1" value="1" required>
                 </div>
-                <div id="out-logic" class="form-group">
-                    <label for="destination">Destination:</label>
-                    <input type="text" id="destination" placeholder="Where is it going?">
+
+                <!-- Shown for dispatch (out) -->
+                <div id="out-logic" class="form-group" style="display:none;">
+                    <label for="trans-destination">Destination <span class="required">*</span></label>
+                    <input type="text" id="trans-destination" list="dest-options"
+                           placeholder="Where is it going?">
+                    <datalist id="dest-options">
+                        <option value="Warehouse A">
+                        <option value="Warehouse B">
+                        <option value="Field Team">
+                        <option value="Maintenance Dept.">
+                        <option value="HR Department">
+                        <option value="IT Department">
+                        <option value="Finance Dept.">
+                        <option value="External Delivery">
+                    </datalist>
                 </div>
+
+                <!-- Shown for restock (in) -->
+                <div id="in-logic" class="form-group" style="display:none;">
+                    <label for="trans-source">Source / Vendor <span class="required">*</span></label>
+                    <input type="text" id="trans-source" placeholder="Where is it coming from?">
+                </div>
+
                 <div class="form-group">
-                    <label for="purpose">Purpose/Reference:</label>
-                    <input type="text" id="purpose" placeholder="Reason for transaction">
+                    <label for="trans-purpose">Purpose / Reference</label>
+                    <input type="text" id="trans-purpose" placeholder="Optional: reason or reference number">
                 </div>
+
                 <div class="modal-actions">
-                    <button type="button" onclick="closeModal()">Cancel</button>
-                    <button type="submit">Confirm</button>
+                    <button type="button" class="btn-secondary" onclick="closeTransModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Confirm</button>
                 </div>
             </form>
         </div>
