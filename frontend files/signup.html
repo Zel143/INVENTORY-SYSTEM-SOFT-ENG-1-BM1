@@ -24,6 +24,10 @@
             </div>
             
             <div class="form-group">
+                <input type="text" id="username" name="username" class="input-field" placeholder="Username (e.g. john_doe)" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_]+" title="3-30 characters: letters, numbers, underscore only">
+            </div>
+            
+            <div class="form-group">
                 <input type="email" id="emailAddress" name="email" class="input-field" placeholder="Email Address" required>
             </div>
             
@@ -39,6 +43,14 @@
                 <button type="button" class="password-toggle" onclick="togglePasswordVisibility('confirmPass', 'eyeIcon2')" title="Show/Hide Password">
                     <i class="fas fa-eye" id="eyeIcon2"></i>
                 </button>
+            </div>
+
+            <div class="form-group">
+                <select id="role" name="role" class="input-field" required style="cursor: pointer;">
+                    <option value="" disabled selected>Select Account Type</option>
+                    <option value="staff">Staff</option>
+                    <option value="admin">Admin</option>
+                </select>
             </div>
 
             <div class="form-group mt-4">
@@ -73,10 +85,17 @@
             e.preventDefault();
 
             const full_name = document.getElementById('fullName').value.trim();
+            const username  = document.getElementById('username').value.trim().toLowerCase();
             const email     = document.getElementById('emailAddress').value.trim();
+            const role      = document.getElementById('role').value;
             const pass      = document.getElementById('regPass');
             const confirm   = document.getElementById('confirmPass');
             const btn       = document.getElementById('signupBtn');
+
+            if (!role) {
+                alert('Please select an account type (Staff or Admin).');
+                return;
+            }
 
             // Password match check
             if (pass.value !== confirm.value) {
@@ -100,12 +119,12 @@
                 const res = await fetch('/api/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ full_name, email, password: pass.value })
+                    body: JSON.stringify({ full_name, username, email, password: pass.value, role })
                 });
                 const data = await res.json();
 
                 if (res.ok) {
-                    alert(`Account created! Your username is: ${data.username}\n\nYou can now log in.`);
+                    alert(`Account created!\n\nUsername: ${data.username}\nRole: ${data.role}\n\nYou can now log in.`);
                     window.location.href = 'index.html';
                 } else {
                     btn.innerText = 'Create Account';

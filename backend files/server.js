@@ -37,7 +37,6 @@ app.use(session({
 }));
 
 // ===================== AUTH HELPERS =====================
-const loginAttempts = new Map();  // username → { count, firstAttempt }  (TC-10 lockout)
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_WINDOW_MS = 15 * 60 * 1000; // 15-minute rolling window — auto-resets (TC-10)
 
@@ -74,31 +73,57 @@ app.post('/api/login', async (req, res) => {
         return res.status(400).json({ error: 'Username and password required' });
     }
 
-    // TC-10: Lockout check with 15-minute rolling window
-    const now = Date.now();
-    const record = loginAttempts.get(username) || { count: 0, firstAttempt: now };
-    // Auto-reset counter if the lockout window has expired
-    if (now - record.firstAttempt >= LOCKOUT_WINDOW_MS) {
-        record.count = 0;
-        record.firstAttempt = now;
-    }
-    if (record.count >= MAX_ATTEMPTS) {
-        const waitMins = Math.ceil((LOCKOUT_WINDOW_MS - (now - record.firstAttempt)) / 60000);
-        return res.status(429).json({
-            error: `Account locked. Too many failed attempts. Try again in ${waitMins} minute${waitMins !== 1 ? 's' : ''}.`
-        });
-    }
-
     try {
-        // TC-11: Exact case match — PostgreSQL $1 is case-sensitive
-        const user = (await pool.query('SELECT * FROM users WHERE username = $1', [username])).rows[0];
+        // TC-10: DB-persisted lockout — survives server restarts
+        const now = new Date();
+        const windowStart = new Date(now - LOCKOUT_WINDOW_MS);
+
+        // Fetch or auto-expire the persisted record
+        const laRow = (await pool.query(
+            `SELECT * FROM login_attempts WHERE username = $1`, [username]
+        )).rows[0];
+
+        if (laRow) {
+            // If the window has expired, reset the record
+            if (laRow.first_attempt < windowStart) {
+                await pool.query(
+                    `UPDATE login_attempts SET attempt_count = 0, first_attempt = $1 WHERE username = $2`,
+                    [now, username]
+                );
+            } else if (laRow.attempt_count >= MAX_ATTEMPTS) {
+                const lockedUntil = new Date(laRow.first_attempt.getTime() + LOCKOUT_WINDOW_MS);
+                const waitMins = Math.ceil((lockedUntil - now) / 60000);
+                return res.status(429).json({
+                    error: `Account locked. Too many failed attempts. Try again in ${waitMins} minute${waitMins !== 1 ? 's' : ''}.`
+                });
+            }
+        }
+
+        // TC-11: Exact case match; also accept email as login identifier
+        const user = (await pool.query('SELECT * FROM users WHERE username = $1 OR email = $1', [username])).rows[0];
 
         // TC-12: bcrypt comparison prevents SQL injection / timing attacks
         if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-            record.count += 1;
-            loginAttempts.set(username, record);
-            const remaining = MAX_ATTEMPTS - record.count;
-            // On the 5th failure immediately return 429 (locked), not "0 remaining"
+            // Upsert attempt counter
+            await pool.query(`
+                INSERT INTO login_attempts (username, attempt_count, first_attempt)
+                VALUES ($1, 1, $2)
+                ON CONFLICT (username) DO UPDATE
+                  SET attempt_count = CASE
+                        WHEN login_attempts.first_attempt < $3 THEN 1
+                        ELSE login_attempts.attempt_count + 1
+                      END,
+                      first_attempt = CASE
+                        WHEN login_attempts.first_attempt < $3 THEN $2
+                        ELSE login_attempts.first_attempt
+                      END
+            `, [username, now, windowStart]);
+
+            const updated = (await pool.query(
+                'SELECT attempt_count FROM login_attempts WHERE username = $1', [username]
+            )).rows[0];
+            const remaining = MAX_ATTEMPTS - (updated ? updated.attempt_count : 1);
+
             if (remaining <= 0) {
                 return res.status(429).json({
                     error: 'Account locked. Too many failed attempts. Try again in 15 minutes.'
@@ -110,7 +135,7 @@ app.post('/api/login', async (req, res) => {
         }
 
         // Success — reset lockout counter
-        loginAttempts.delete(username);
+        await pool.query('DELETE FROM login_attempts WHERE username = $1', [username]);
         req.session.user = {
             id: user.id,
             username: user.username,
@@ -135,23 +160,31 @@ app.post('/api/logout', (req, res) => {
 
 // TC-N: Register (for signup.html)
 app.post('/api/register', async (req, res) => {
-    const { full_name, email, password } = req.body;
+    const { full_name, username: rawUsername, email, password, role: rawRole } = req.body;
     if (!full_name || !email || !password) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return res.status(400).json({ error: 'Full name, email, and password are required' });
     }
     if (password.length < 8) {
         return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
-    const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Use supplied username or derive from email
+    const username = rawUsername
+        ? rawUsername.trim().toLowerCase()
+        : email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+        return res.status(400).json({ error: 'Username must be 3–30 characters (letters, numbers, underscore only)' });
+    }
+    // Only 'staff' or 'admin' allowed; default to 'staff'
+    const role = (rawRole === 'admin') ? 'admin' : 'staff';
     try {
         const hash = bcrypt.hashSync(password, 10);
         await pool.query(
             'INSERT INTO users (username, full_name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
-            [username, full_name, email, hash, 'staff']
+            [username, full_name, email, hash, role]
         );
-        res.status(201).json({ success: true, message: 'Account created. You can now log in.', username });
+        res.status(201).json({ success: true, message: 'Account created. You can now log in.', username, role });
     } catch (err) {
-        if (err.code === '23505') return res.status(400).json({ error: 'Email already registered' });
+        if (err.code === '23505') return res.status(400).json({ error: 'Username or email already taken' });
         res.status(500).json({ error: err.message });
     }
 });
@@ -209,43 +242,73 @@ app.post('/api/verify-reset-code', (req, res) => {
 });
 
 // Admin — list all locked / failed-attempt accounts (TC-10 recovery)
-app.get('/api/admin/lockouts', requireAdmin, (req, res) => {
-    const now = Date.now();
-    const list = [];
-    for (const [username, record] of loginAttempts.entries()) {
-        const expired = (now - record.firstAttempt) >= LOCKOUT_WINDOW_MS;
-        if (!expired) {
-            const waitMins = Math.ceil((LOCKOUT_WINDOW_MS - (now - record.firstAttempt)) / 60000);
-            list.push({
-                username,
-                attempts: record.count,
-                locked: record.count >= MAX_ATTEMPTS,
-                lockedUntil: record.count >= MAX_ATTEMPTS
-                    ? new Date(record.firstAttempt + LOCKOUT_WINDOW_MS).toISOString()
-                    : null,
-                minutesRemaining: record.count >= MAX_ATTEMPTS ? waitMins : null
-            });
-        }
+app.get('/api/admin/lockouts', requireAdmin, async (req, res) => {
+    try {
+        const now = new Date();
+        const windowStart = new Date(now - LOCKOUT_WINDOW_MS);
+        const rows = (await pool.query(
+            `SELECT * FROM login_attempts WHERE first_attempt >= $1 ORDER BY attempt_count DESC`,
+            [windowStart]
+        )).rows;
+
+        const list = rows.map(r => {
+            const lockedUntil = new Date(r.first_attempt.getTime() + LOCKOUT_WINDOW_MS);
+            const waitMins = Math.max(0, Math.ceil((lockedUntil - now) / 60000));
+            return {
+                username: r.username,
+                attempts: r.attempt_count,
+                locked: r.attempt_count >= MAX_ATTEMPTS,
+                lockedUntil: r.attempt_count >= MAX_ATTEMPTS ? lockedUntil.toISOString() : null,
+                minutesRemaining: r.attempt_count >= MAX_ATTEMPTS ? waitMins : null
+            };
+        });
+        res.json(list);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    res.json(list);
 });
 
 // Admin — clear a specific account's lockout counter
-app.delete('/api/admin/lockout/:username', requireAdmin, (req, res) => {
+app.delete('/api/admin/lockout/:username', requireAdmin, async (req, res) => {
     const { username } = req.params;
-    if (!loginAttempts.has(username)) {
-        return res.status(404).json({ error: `No lockout record found for '${username}'` });
+    try {
+        const result = await pool.query('DELETE FROM login_attempts WHERE username = $1', [username]);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: `No lockout record found for '${username}'` });
+        }
+        res.json({ success: true, message: `Lockout cleared for '${username}'` });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    loginAttempts.delete(username);
-    res.json({ success: true, message: `Lockout cleared for '${username}'` });
 });
 
 // ===================== INVENTORY ROUTES =====================
 
-// TC-21: Load inventory
+// TC-21: Load inventory — supports ?search=, ?vendor=, ?low_stock=true
 app.get('/api/inventory', requireAuth, async (req, res) => {
+    const { search, vendor, low_stock } = req.query;
+    const conditions = [];
+    const params = [];
+
+    if (search) {
+        params.push(`%${search}%`);
+        const idx = params.length;
+        conditions.push(`(name ILIKE $${idx} OR code ILIKE $${idx} OR description ILIKE $${idx})`);
+    }
+    if (vendor) {
+        params.push(`%${vendor}%`);
+        conditions.push(`vendor ILIKE $${params.length}`);
+    }
+    if (low_stock === 'true') {
+        conditions.push(`(min_threshold > 0 AND current_stock <= min_threshold)`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     try {
-        const items = (await pool.query('SELECT * FROM inventory ORDER BY code')).rows;
+        const items = (await pool.query(
+            `SELECT * FROM inventory ${where} ORDER BY code`,
+            params
+        )).rows;
         res.json(items);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -267,7 +330,7 @@ app.get('/api/inventory/:code', requireAuth, async (req, res) => {
 app.post('/api/inventory', requireAdmin, async (req, res) => {
     const { code, name, description, vendor, delivery_date,
             current_stock, max_ceiling, min_threshold,
-            warranty_start, warranty_end } = req.body;
+            warranty_start, warranty_end, image } = req.body;
 
     if (!code) return res.status(400).json({ error: 'Item code is required' });
     if (!name) return res.status(400).json({ error: 'Description/name is required' });
@@ -285,10 +348,10 @@ app.post('/api/inventory', requireAdmin, async (req, res) => {
 
     try {
         await pool.query(`
-            INSERT INTO inventory (code, name, description, vendor, delivery_date, current_stock, allocated_stock, max_ceiling, min_threshold, warranty_start, warranty_end)
-            VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10)
+            INSERT INTO inventory (code, name, description, vendor, delivery_date, current_stock, allocated_stock, max_ceiling, min_threshold, warranty_start, warranty_end, image)
+            VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11)
         `, [code, name, description || '', vendor || '', delivery_date || null,
-            qty, ceil, thresh, warranty_start || null, warranty_end || null]);
+            qty, ceil, thresh, warranty_start || null, warranty_end || null, image || null]);
 
         broadcast('inventory:added', { code });
         res.status(201).json({ success: true, message: 'Item added successfully' });
@@ -364,9 +427,9 @@ app.put('/api/inventory/:code', requireAuth, async (req, res) => {
         );
 
         await client.query(`
-            INSERT INTO transactions (inventory_code, transaction_type, quantity_change, actor_id, actor_name, destination, purpose)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        `, [req.params.code, txType, qty,
+            INSERT INTO transactions (inventory_code, item_name, transaction_type, quantity_change, actor_id, actor_name, destination, purpose)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [req.params.code, item.name, txType, qty,
             req.session.user.id, req.session.user.username,
             destination || null, purpose || null]);
 
@@ -387,28 +450,41 @@ app.put('/api/inventory/:code', requireAuth, async (req, res) => {
 
 // TC-56: Delete item (admin only)
 app.delete('/api/inventory/:code', requireAdmin, async (req, res) => {
+    const client = await pool.connect();
     try {
-        const item = (await pool.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
-        if (!item) return res.status(404).json({ error: 'Item not found' });
+        await client.query('BEGIN');
+
+        const item = (await client.query(
+            'SELECT * FROM inventory WHERE code = $1 FOR UPDATE',
+            [req.params.code]
+        )).rows[0];
+        if (!item) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Item not found' });
+        }
 
         // TC-58: Log deletion to audit trail BEFORE removing the item
-        await pool.query(`
-            INSERT INTO transactions (inventory_code, transaction_type, quantity_change, actor_id, actor_name, purpose)
-            VALUES ($1, 'deletion', $2, $3, $4, 'Item permanently deleted')
-        `, [item.code, -item.current_stock, req.session.user.id, req.session.user.username]);
+        await client.query(`
+            INSERT INTO transactions (inventory_code, item_name, transaction_type, quantity_change, actor_id, actor_name, purpose)
+            VALUES ($1, $2, 'deletion', $3, $4, $5, 'Item permanently deleted')
+        `, [item.code, item.name, -item.current_stock, req.session.user.id, req.session.user.username]);
 
-        await pool.query('DELETE FROM inventory WHERE code = $1', [req.params.code]);
+        await client.query('DELETE FROM inventory WHERE code = $1', [req.params.code]);
+        await client.query('COMMIT');
         broadcast('inventory:updated', { code: req.params.code, deleted: true });
         res.json({ success: true });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 });
 
 // TC-52 / TC-53 / TC-54: Edit item metadata (admin only)
 app.put('/api/inventory/:code/details', requireAdmin, async (req, res) => {
     const { name, description, vendor, delivery_date, max_ceiling, min_threshold,
-            warranty_start, warranty_end, allocated_stock } = req.body;
+            warranty_start, warranty_end, allocated_stock, image } = req.body;
 
     const ceil   = parseInt(max_ceiling)    || 999;
     const thresh = parseInt(min_threshold)  || 0;
@@ -438,17 +514,116 @@ app.put('/api/inventory/:code/details', requireAdmin, async (req, res) => {
                 min_threshold   = $6,
                 warranty_start  = $7,
                 warranty_end    = $8,
-                allocated_stock = $9
-            WHERE code = $10
+                allocated_stock = $9,
+                image           = COALESCE($10, image)
+            WHERE code = $11
         `, [name || null, description || null, vendor || null, delivery_date || null,
             ceil, thresh, warranty_start || null, warranty_end || null,
-            newAlloc, req.params.code]);
+            newAlloc, image || null, req.params.code]);
 
         const updated = (await pool.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
         broadcast('inventory:updated', { code: req.params.code });
         res.json({ success: true, item: updated });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+// Allocate stock — reserves units without changing physical stock
+app.post('/api/inventory/:code/allocate', requireAuth, async (req, res) => {
+    const qty = parseInt(req.body.quantity);
+    if (!qty || qty <= 0) return res.status(400).json({ error: 'Quantity must be a positive number' });
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const item = (await client.query(
+            'SELECT * FROM inventory WHERE code = $1 FOR UPDATE',
+            [req.params.code]
+        )).rows[0];
+        if (!item) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        const newAlloc = item.allocated_stock + qty;
+        if (newAlloc > item.current_stock) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                error: `Cannot allocate ${qty} units — only ${item.current_stock - item.allocated_stock} available`
+            });
+        }
+
+        await client.query(
+            'UPDATE inventory SET allocated_stock = $1 WHERE code = $2',
+            [newAlloc, req.params.code]
+        );
+        await client.query(`
+            INSERT INTO transactions (inventory_code, item_name, transaction_type, quantity_change, actor_id, actor_name, purpose)
+            VALUES ($1, $2, 'allocation', $3, $4, $5, $6)
+        `, [req.params.code, item.name, qty,
+            req.session.user.id, req.session.user.username,
+            req.body.purpose || null]);
+
+        const updated = (await client.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
+        await client.query('COMMIT');
+        broadcast('inventory:updated', { code: req.params.code });
+        res.json({ success: true, item: updated });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Deallocate stock — releases previously reserved units
+app.post('/api/inventory/:code/deallocate', requireAuth, async (req, res) => {
+    const qty = parseInt(req.body.quantity);
+    if (!qty || qty <= 0) return res.status(400).json({ error: 'Quantity must be a positive number' });
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const item = (await client.query(
+            'SELECT * FROM inventory WHERE code = $1 FOR UPDATE',
+            [req.params.code]
+        )).rows[0];
+        if (!item) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        const newAlloc = item.allocated_stock - qty;
+        if (newAlloc < 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                error: `Cannot deallocate ${qty} units — only ${item.allocated_stock} currently allocated`
+            });
+        }
+
+        await client.query(
+            'UPDATE inventory SET allocated_stock = $1 WHERE code = $2',
+            [newAlloc, req.params.code]
+        );
+        await client.query(`
+            INSERT INTO transactions (inventory_code, item_name, transaction_type, quantity_change, actor_id, actor_name, purpose)
+            VALUES ($1, $2, 'deallocation', $3, $4, $5, $6)
+        `, [req.params.code, item.name, -qty,
+            req.session.user.id, req.session.user.username,
+            req.body.purpose || null]);
+
+        const updated = (await client.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
+        await client.query('COMMIT');
+        broadcast('inventory:updated', { code: req.params.code });
+        res.json({ success: true, item: updated });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -543,29 +718,34 @@ app.get('/api/events', requireAuth, (req, res) => {
 });
 
 // ===================== START =====================
-async function startServer(retries = 5, delayMs = 5000) {
+async function startServer() {
+    // Start HTTP server first — frontend is always served regardless of DB state
+    const dbMode = process.env.DATABASE_URL ? 'PostgreSQL (Supabase)' : 'SQLite (local)';
+    app.listen(PORT, () => {
+        console.log(`\n✅  StockSense HTTP server running → http://localhost:${PORT}`);
+        console.log(`    Database: ${dbMode}`);
+        console.log(`    Attempting DB init…\n`);
+    });
+
+    // Attempt DB init with retries (non-blocking — server already listening)
+    const retries = 5;
+    const delayMs = 5000;
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             await initDB();
-            app.listen(PORT, () => {
-                console.log(`\n✅  StockSense is running → http://localhost:${PORT}`);
-                console.log(`    Database: ${process.env.PG_HOST}:${process.env.PG_PORT || 5432}/${process.env.PG_DATABASE || 'postgres'}`);
-                console.log(`    Login with:  admin / admin   (Administrator)`);
-                console.log(`                 staff / staff   (Staff User)\n`);
-            });
-            return; // success — exit the retry loop
+            console.log(`✅  Database ready. Login with:  admin / admin   |   staff / staff\n`);
+            return;
         } catch (err) {
             console.error(`❌  DB init failed (attempt ${attempt}/${retries}): ${err.message}`);
             if (attempt < retries) {
                 console.error(`    Retrying in ${delayMs / 1000}s…`);
                 await new Promise(r => setTimeout(r, delayMs));
             } else {
-                console.error('    All retries exhausted. Check Supabase credentials in .env');
-                console.error(`    PG_HOST=${process.env.PG_HOST}`);
-                console.error(`    PG_PORT=${process.env.PG_PORT}`);
-                console.error(`    PG_USER=${process.env.PG_USER}`);
-                console.error(`    PG_DATABASE=${process.env.PG_DATABASE}`);
-                process.exit(1);
+                console.error('\n⚠️   All DB retries exhausted. API endpoints will return 500 until DB is reachable.');
+                const hint = process.env.DATABASE_URL
+                    ? '    → Check your DATABASE_URL in .env and Supabase connectivity'
+                    : '    → Check that stocksense.db is accessible in the backend files/ directory';
+                console.error(hint + '\n');
             }
         }
     }

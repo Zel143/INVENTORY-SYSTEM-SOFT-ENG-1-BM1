@@ -28,11 +28,12 @@ def api_request(method, path, body: nil, cookies: nil)
   begin
     response = http.request(request)
     parsed = JSON.parse(response.body) rescue {}
+    # Extract only "name=value" from each Set-Cookie header (strip Path/Expires/HttpOnly etc.)
     set_cookies = response.get_fields('set-cookie') || []
     {
       status: response.code.to_i,
       json:   parsed,
-      cookies: set_cookies.join('; ')
+      cookies: set_cookies.map { |c| c.split(';').first.strip }.join('; ')
     }
   rescue => e
     { status: 0, json: {}, cookies: '' }

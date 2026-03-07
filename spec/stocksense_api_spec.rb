@@ -36,6 +36,12 @@ RSpec.describe 'StockSense API — UAT Test Suite' do
       expect([401, 429]).to include(r[:status])
     end
 
+    it '[TC-13] handles special characters in username without crashing' do
+      r = api_request('POST', '/api/login', body: { username: '@#$%^&*!', password: 'x' })
+      # Parameterized query handles any string safely — returns 401 (no match) or 429 (locked)
+      expect([401, 429]).to include(r[:status])
+    end
+
     it '[TC-10] returns remaining attempts on invalid credentials (fresh username)' do
       # Use a per-run unique username so accumulated counters from prior test runs never interfere
       unique_user = "tc10-#{Time.now.to_i}"
@@ -206,12 +212,43 @@ RSpec.describe 'StockSense API — UAT Test Suite' do
     before(:all) do
       r = api_request('POST', '/api/login', body: { username: 'admin', password: 'admin' })
       @admin_cookie = r[:cookies]
-      # Ensure TST-001 exists with enough stock
+      # Main transaction test item
       api_request('DELETE', '/api/inventory/TST-TXN', cookies: @admin_cookie)
       api_request('POST', '/api/inventory',
         body: { code: 'TST-TXN', name: 'Transaction Test', current_stock: 50,
                 min_threshold: 2, max_ceiling: 200, allocated_stock: 0 },
         cookies: @admin_cookie)
+      # Allocation guardrail test item (TC-64 / TC-65)
+      api_request('DELETE', '/api/inventory/TST-ALLOC', cookies: @admin_cookie)
+      api_request('POST', '/api/inventory',
+        body: { code: 'TST-ALLOC', name: 'Allocation Guard Test', current_stock: 10,
+                min_threshold: 0, max_ceiling: 50, allocated_stock: 0 },
+        cookies: @admin_cookie)
+    end
+
+    it '[TC-64] blocks dispatch when all available stock is allocated' do
+      # Fully allocate TST-ALLOC (10/10 units), then try dispatching 1
+      api_request('POST', '/api/inventory/TST-ALLOC/allocate',
+        body: { quantity: 10 }, cookies: @admin_cookie)
+      r = api_request('PUT', '/api/inventory/TST-ALLOC',
+        body: { quantity_change: -1, destination: 'Workshop A' },
+        cookies: @admin_cookie)
+      expect(r[:status]).to eq(400)
+      expect(r[:json]['error']).to match(/allocation breach/i)
+      # Reset for TC-65
+      api_request('POST', '/api/inventory/TST-ALLOC/deallocate',
+        body: { quantity: 10 }, cookies: @admin_cookie)
+    end
+
+    it '[TC-65] blocks dispatch that would breach partial allocation' do
+      # Allocate 8/10 units; available = 2; dispatch 5 → new_stock=5 < allocated=8 → blocked
+      api_request('POST', '/api/inventory/TST-ALLOC/allocate',
+        body: { quantity: 8 }, cookies: @admin_cookie)
+      r = api_request('PUT', '/api/inventory/TST-ALLOC',
+        body: { quantity_change: -5, destination: 'Workshop B' },
+        cookies: @admin_cookie)
+      expect(r[:status]).to eq(400)
+      expect(r[:json]['error']).to match(/allocation breach/i)
     end
 
     it '[TC-63] rejects dispatch that would overdraft stock' do

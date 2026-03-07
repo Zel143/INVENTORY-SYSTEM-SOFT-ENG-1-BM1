@@ -62,8 +62,7 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 ## Prerequisites
 
 - **Node.js** v18 or later
-- **PostgreSQL** v14 or later (running on port 5432)
-- A PostgreSQL database named `stocksense`
+- A **Supabase** project (free tier is sufficient — [supabase.com](https://supabase.com))
 
 ---
 
@@ -83,29 +82,26 @@ cd "backend files"
 npm install
 ```
 
-### 3. Create the PostgreSQL database
+### 3. Set up the Supabase database
 
-Open your PostgreSQL client (psql, pgAdmin, etc.) and run:
-
-```sql
-CREATE DATABASE stocksense;
-```
+1. Create a free project at [supabase.com](https://supabase.com)
+2. In your project, go to **SQL Editor**
+3. Copy the full contents of `spec/supabase/schema.sql` and run it — this creates all required tables
+4. Go to **Settings → Database** and copy the **Transaction pooler** connection string
 
 ### 4. Configure environment variables
 
-Create a `.env` file inside the `backend files/` folder:
+Create a `.env` file inside the `backend files/` folder (or edit the existing one):
 
 ```env
-PG_HOST=localhost
-PG_PORT=5432
-PG_DATABASE=stocksense
-PG_USER=postgres
-PG_PASSWORD=your_postgres_password
-
-SESSION_SECRET=stocksense-secret-2026
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@<host>.pooler.supabase.com:5432/postgres
+SESSION_SECRET=your-random-secret
+PORT=3000
 ```
 
-> The `.env` file is already present if you cloned the full repo. Update `PG_PASSWORD` to match your local PostgreSQL setup.
+Replace the values with your actual Supabase project connection string from **Settings → Database → Transaction pooler**.
+
+> The `.env` file is **not committed** (it is listed in `.gitignore`). Never share or commit this file.
 
 ### 5. Start the server
 
@@ -115,8 +111,8 @@ node server.js
 ```
 
 The server will:
-1. Connect to PostgreSQL
-2. Automatically create all required tables and seed default users
+1. Connect to Supabase PostgreSQL
+2. Seed default users if the `users` table is empty
 3. Start listening on **http://localhost:3000**
 
 ---
