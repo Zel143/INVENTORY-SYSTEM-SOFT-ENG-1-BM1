@@ -199,6 +199,131 @@ The server will:
 | `GET` | `/api/transactions` | Admin | Full history (paginated) |
 | `GET` | `/api/transactions/item/:code` | Any | Per-item history |
 
+### Admin — Users
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/admin/users` | Admin | List all registered users |
+| `DELETE` | `/api/admin/users/:id` | Admin | Remove a user account |
+| `PUT` | `/api/admin/lockouts/:username/clear` | Admin | Clear a locked-out account |
+
+---
+
+## Current System State *(updated March 2026)*
+
+### Database — Dual Mode
+
+The backend now supports **two database modes** selected automatically at startup:
+
+| Mode | When active | Storage |
+|---|---|---|
+| **SQLite** (default) | `DATABASE_URL` is **not** set in `.env` | `backend files/stocksense.db` (local file, auto-created) |
+| **PostgreSQL / Supabase** | `DATABASE_URL` **is** set in `.env` | Remote Supabase PostgreSQL |
+
+The database schema, seed data, and all query behaviour are identical in both modes. Switch between them by adding or removing `DATABASE_URL` in `.env` — no code changes needed.
+
+#### Running with SQLite (no external DB required)
+
+Remove or comment out `DATABASE_URL` in `backend files/.env`:
+
+```env
+# DATABASE_URL=postgresql://...   <-- leave this commented out for SQLite
+SESSION_SECRET=your-random-secret
+PORT=3000
+```
+
+On first start the server will create `stocksense.db` and seed default users and sample inventory automatically.
+
+#### Running with Supabase (PostgreSQL)
+
+1. Create a free project at [supabase.com](https://supabase.com)
+2. Go to **SQL Editor** and run the full contents of `spec/supabase/schema.sql`
+3. Go to **Settings → Database → Connection string → Transaction pooler** and copy the URI
+4. Set it in `backend files/.env`:
+
+```env
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+SESSION_SECRET=your-random-secret
+PORT=3000
+```
+
+> The server will connect to Supabase on startup and seed default users if the `users` table is empty.
+
+---
+
+### Updated Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js |
+| Web Framework | Express 4 |
+| Database (default) | **SQLite via `better-sqlite3`** (local, no setup) |
+| Database (optional) | **PostgreSQL via Supabase** (set `DATABASE_URL`) |
+| Auth | express-session + bcryptjs |
+| Frontend | HTML5 / CSS3 / Vanilla JS |
+| Real-time | Server-Sent Events (SSE) |
+
+---
+
+### Registration — Role Selection
+
+The sign-up page (`/signup.html`) now collects:
+
+| Field | Notes |
+|---|---|
+| Full Name | Display name |
+| Username | 3–30 characters, letters/numbers/underscore only, stored lowercase |
+| Email | Must be unique |
+| Password | Minimum 8 characters |
+| Confirm Password | Must match |
+| **Account Type** | **Staff** or **Admin** — selected from a dropdown |
+
+The chosen role is accepted directly by `/api/register`. Login (`/api/login`) accepts either **username** or **email** as the identifier.
+
+---
+
+### Seeded Default Data
+
+On first run (both SQLite and PostgreSQL modes) the following are auto-inserted if the tables are empty:
+
+**Users**
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `admin` | Administrator |
+| `staff` | `staff` | Staff |
+
+**Sample Inventory**
+
+| Code | Name | Vendor | Stock |
+|---|---|---|---|
+| SKU-101 | Industrial Motor | Siemens | 52 |
+| SKU-205 | Hydraulic Pump | Parker | 180 |
+| SKU-308 | Conveyor Belt | ConveyorPro | 400 |
+| SKU-412 | Control Panel | ABB | 12 |
+| SKU-519 | Pressure Valve | Bosch Rexroth | 8 |
+
+---
+
+### Starting the Server
+
+```bash
+cd "backend files"
+node server.js
+```
+
+Expected output (SQLite mode):
+```
+SQLite database is ready
+StockSense HTTP server is running on http://localhost:3000
+```
+
+Expected output (Supabase mode):
+```
+[DB] PostgreSQL (Supabase) ready
+StockSense HTTP server is running on http://localhost:3000
+```
+
 ### Admin — Lockout Management
 
 | Method | Endpoint | Auth | Description |
