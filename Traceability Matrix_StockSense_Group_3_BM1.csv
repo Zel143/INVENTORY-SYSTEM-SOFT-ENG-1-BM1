@@ -1,0 +1,53 @@
+﻿,,StockSense Requirements Traceability Matrix,
+,Project Name,StockSense,
+,Project Manager,Ranzel Virtucio,
+,Business Analyst,Raphael Agapito,
+,Document Version,2.0,
+,Date Created,March 9 2026,
+,Source Document,Test Script_StockSense_Group_3_BM1 - UAT Cases.csv,
+,Cross-Reference,Each UAT test case in the source document contains a Req ID(s) column that links back to this matrix.,
+,,, 
+Req ID,Business Need,Technical Implementation,UAT Mapping (Test Case IDs)
+FR-1.0,Brand Identity Display,"Logo is displayed via an HTML image element; CSS flex layout ensures it scales correctly on all screen sizes including mobile","1, 2, 3"
+FR-2.0,Accessible Login Form,"Standard HTML5 login form with password masking; show/hide password toggle button; form is fully keyboard-accessible using Tab and Enter keys","4, 5, 6, 14, 15"
+FR-3.0,Secure User Authentication,"Server verifies username and password against the database using secure parameterised queries; returns an error if credentials are invalid; blocks SQL injection attempts","7, 8, 9, 10, 11, 12, 13"
+FR-4.0,Account Lockout Protection,"Failed login attempts are tracked per user; account is locked for 15 minutes after 5 consecutive failures; the lockout counter resets automatically after the window expires","10, 116, 122"
+FR-5.0,Session Security and Expiry,"User sessions automatically expire after 2 hours of inactivity; visiting a protected page without a session redirects to login; logging out destroys the session on the server immediately","16, 17, 18, 19, 20"
+FR-6.0,Role-Based Access Control,"Every protected API call checks whether the user is Admin or Staff; Staff users are blocked from admin-only actions with a permission error; unauthenticated users are rejected entirely","8, 9, 16, 83"
+FR-7.0,Fast Dashboard Load and SPA Navigation,"Inventory data is fetched from the server on page load; sidebar tabs switch content panels in-place without reloading the page; hamburger button shows or hides the sidebar on mobile","21, 22, 23"
+FR-8.0,Real-Time Client-Side Inventory Search,"Search bar instantly filters the already-loaded inventory list in the browser across item code, name, description, and vendor fields; matching is case-insensitive","24, 25, 26, 27, 28, 29, 30"
+FR-9.0,Server-Side Inventory Filtering,"Server accepts search, vendor, and low-stock filter parameters in the URL and queries the database directly; results are returned independently of the client-side search bar","123, 124, 125"
+FR-10.0,Stockout Prevention via Low-Stock Alerts,"Server queries for items where current stock has reached or dropped below the minimum threshold; the dashboard highlights those rows with a red alert badge","31, 32, 33"
+FR-11.0,Overstock Detection,"Each inventory row is checked against its maximum ceiling value; a yellow badge is shown against any item whose stock exceeds its defined ceiling",34
+FR-12.0,Warranty Status Visibility,"Each item's warranty end date is compared to today; the result is shown as a colour-coded badge — Expired (red) when past, Active (green) when future, or N/A when no date is set","35, 36"
+FR-13.0,Accurate Available Stock Calculation,"Available stock is calculated as total stock minus reserved (allocated) stock; this figure is shown in the dispatch popup before each transaction so users know the true quantity available",37
+FR-14.0,Sortable Inventory Table,"Clicking a column header sorts the inventory table; clicking again reverses the sort direction; works for at least the Description and Available quantity columns","38, 39"
+FR-15.0,Real-Time Inventory Updates via SSE,"Dashboard maintains a live connection to the server; any inventory addition or update triggered by another user automatically refreshes the table without needing a manual page reload",40
+FR-16.0,Inventory Item Creation,"Admin fills in the add-item form; server validates all required fields and rejects duplicate item codes, negative quantities, and reversed warranty dates before saving to the database","41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51"
+FR-17.0,Inventory Item Editing,"Admin opens the edit modal, changes item details, and saves; server checks that reservation values are not exceeded before updating the record; the on-screen table refreshes automatically","52, 53, 54, 55"
+FR-18.0,Inventory Item Deletion with Audit Trail,"Admin confirms deletion through a confirmation dialog; server permanently records the deletion in the audit log before removing the item from the inventory table","56, 57, 58"
+FR-19.0,Mobile Responsiveness,"All pages are configured for mobile viewports; a hamburger menu appears on small screens via CSS; quantity input fields trigger the numeric keyboard on mobile devices","2, 23, 59, 77"
+FR-20.0,Form UX and Duplicate Submission Prevention,"The submit button is disabled immediately after clicking to prevent duplicate submissions; all fields in popups are automatically cleared each time a form is opened","60, 78"
+FR-21.0,Overdraft and Allocation Protection on Dispatch,"Server checks that the requested dispatch quantity does not exceed available stock or reserved stock; the entire transaction is cancelled and rolled back if either limit is breached","61, 62, 63, 64, 65, 66"
+FR-22.0,Dispatch Destination and Purpose Tracking,"Destination is a required field for all dispatches; an optional work-order purpose note can also be recorded; eight preset destination locations are offered as quick-select options","67, 68"
+FR-23.0,Transaction Input Validation,"Quantity fields accept only positive numbers greater than zero; the browser enforces this natively via the input type, and the server applies the same check as a second layer of protection","69, 70, 71"
+FR-24.0,Concurrency Safety on Dispatch,"The database locks the inventory row during each dispatch so that two users dispatching the same item at the same time cannot both succeed with the full quantity",74
+FR-25.0,Stock Replenishment (Restock),"Restock adds to the item's current stock quantity; the source or vendor field is mandatory; the transaction is saved to the audit log as a stock addition","72, 73"
+FR-26.0,User Feedback via Toast Notifications,"After every transaction the system shows a brief pop-up notification — green for success, red for failure — with a plain-language message; no blocking alert dialogs are used","75, 76"
+FR-27.0,Tamper-Proof Transaction Metadata,"The timestamp on every transaction is set by the database server at the moment of saving; the actor's name is taken from their server-side session so users cannot change who is recorded as responsible","79, 80"
+FR-28.0,Immutable Audit Trail,"Transaction history is visible to Admin users only; no edit or delete buttons exist in the interface; a database-level trigger also blocks any direct attempt to delete audit records","81, 82, 83, 84, 85"
+FR-29.0,History Filtering and Sorting,"The history search bar filters displayed records by actor name, item code, item name, destination, or purpose; the Time and Item columns can be sorted ascending or descending","86, 87, 88, 89"
+FR-30.0,Server-Side History Pagination,"Transaction history loads 50 records per page; the server returns the total count and page numbers; Prev and Next navigation buttons are automatically disabled at the first and last pages","90, 91, 92"
+FR-31.0,CSV Export of Transaction History,"The Export button downloads the currently displayed history as a CSV file; all column names and values match the on-screen table exactly; special characters within values are correctly escaped","93, 94"
+FR-32.0,Cross-Browser Compatibility (Chrome and Firefox),"The system uses standard web technologies with no browser-specific features; confirmed to work correctly in Google Chrome and Mozilla Firefox","95, 96"
+FR-33.0,Safari and iOS Compatibility (Pending),"Session cookies and date inputs may have different behaviour on Safari and iOS Safari; testing on a physical Apple device has not yet been performed — result is pending",97
+FR-34.0,Database Connectivity Validation,"The server queries the live database for real-time counts of total items, allocated stock, low-stock items, and overstocked items; this also confirms that the database connection is active",98
+FR-35.0,Production Acceptance and Physical Audit,"All automated tests have passed; a physical count of warehouse stock must be compared to the system's digital figures before final sign-off — this manual step is still pending","99, 100"
+FR-36.0,User Registration,"The registration form checks that the username follows the allowed format, the password meets the minimum length, and neither the username nor email already exists; the password is securely hashed before being saved","101, 102, 103, 104, 105"
+FR-37.0,Email-Based Login,"The login system accepts either a username or an email address in the username field; a single database query checks both possibilities at once",106
+FR-38.0,Secure Password Reset Flow,"A forgot-password request generates a 6-digit code valid for 15 minutes; the code is deleted after one successful use; accounts that do not exist receive the same neutral response to prevent user enumeration","107, 108, 109, 110, 111"
+FR-39.0,Stock Allocation Management,"Dedicated endpoints allow stock to be reserved (allocated) or released (deallocated) per item; the server prevents over-reservation or releasing more than currently reserved; every change is logged in the audit trail","112, 113, 114, 115"
+FR-40.0,Admin Lockout Management,"Admin can view all user accounts currently under a lockout and manually clear any lockout record; returns a not-found response if the specified account has no active lockout","116, 117"
+FR-41.0,Dark Mode Theme Persistence,"The dark mode toggle in the header instantly switches the colour scheme; the chosen setting is saved in the browser so it is automatically restored on the next visit",118
+FR-42.0,Per-Item Transaction History,"Any logged-in user (Admin or Staff) can view the 50 most recent transactions for a specific item, ordered with the newest events at the top",119
+FR-43.0,Dashboard Statistics Cards,"The stats cards on the dashboard show live counts pulled from the database: total number of items in inventory and how many are currently overstocked; values update automatically after changes","120, 121"

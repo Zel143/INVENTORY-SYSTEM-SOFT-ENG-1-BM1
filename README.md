@@ -441,3 +441,40 @@ This uses `nodemon` to automatically restart the server on file changes.
 - Password reset does not send a real email. In development mode the 6-digit code is returned in the API response (`dev_code`) and printed to the server console. The `resetCodes` store is **in-memory** — codes are lost on server restart. For production, wire a transactional email service (e.g. SendGrid, Nodemailer) and a persistent store.
 - The login lockout counter is stored in the **`login_attempts` database table** (both SQLite and PostgreSQL modes) and therefore survives server restarts. A **15-minute rolling window** ensures counters auto-reset once the window expires — counters never accumulate permanently. Admins can also force-clear a specific lockout early via `DELETE /api/admin/lockout/:username`.
 - **TC-10/11/12 fix**: Previously, repeated test runs accumulated lockout counts for test usernames (`ADMIN`, `nobody`, `' OR 1=1 --`) until they returned HTTP 429 instead of the expected 401, causing test failures. Fixed by: (1) 15-min rolling window in `server.js`, (2) unique per-run usernames in TC-10 RSpec tests, (3) accepting both 401 and 429 as valid rejection responses in TC-11 and TC-12.
+
+---
+
+## Changelog
+
+### v2.0 — March 9, 2026
+- **Documents**: Added Requirements Traceability Matrix (`Traceability Matrix_StockSense_Group_3_BM1.csv`) with 43 functional requirements (FR-1.0 – FR-43.0) cross-referenced to all 125 UAT test cases.
+- **Documents**: Added `Req ID(s)` column to UAT Cases CSV to complete bidirectional traceability between test cases and requirements.
+- **Database**: Added dual-mode database support — SQLite (`better-sqlite3`) for local/offline development and PostgreSQL (Supabase) for production; mode is selected automatically based on `DATABASE_URL` in `.env`.
+- **Auth**: Added user registration page (`signup.html`) with full-name, email, role (Staff / Admin) fields; `/api/register` endpoint validates format, uniqueness, and minimum password length before saving a bcrypt hash.
+- **Auth**: Login identifier now accepts either username or email (`/api/login` runs a single `OR`-query against both columns).
+- **Auth**: Added secure password reset flow — 6-digit OTP with 15-minute TTL, single-use, stored in-memory; accounts not found return the same neutral response to prevent user enumeration (OWASP A07).
+- **Auth**: Account lockout now uses a 15-minute rolling window stored in the `login_attempts` table (persists across restarts); Admin endpoint added to view and force-clear individual lockouts (`GET /api/admin/lockouts`, `DELETE /api/admin/lockout/:username`).
+- **Inventory**: Added stock allocation and deallocation endpoints (`POST /api/inventory/:code/allocate`, `POST /api/inventory/:code/deallocate`) so units can be reserved without affecting physical count.
+- **Inventory**: Added server-side filtering on `GET /api/inventory` — `?search=`, `?vendor=`, and `?low_stock=true` query parameters.
+- **Inventory**: Added per-item transaction history endpoint (`GET /api/transactions/item/:code`) accessible by Staff and Admin; returns the 50 most recent events ordered newest-first.
+- **Dashboard**: Added overstock detection badge (yellow) alongside the existing low-stock alert (red).
+- **Dashboard**: Stats cards now show live counts (total SKUs, overstocked count) pulled directly from the database.
+- **Frontend**: Added dark mode toggle with `localStorage` persistence.
+- **Frontend**: Hamburger sidebar toggle added for mobile viewports.
+- **Tests**: RSpec test suite added (`spec/stocksense_api_spec.rb`) covering 36 API test cases in Ruby; `spec_helper.rb` provides shared HTTP utilities and server connectivity check.
+- **Tests**: Fixed TC-10/11/12 test failures caused by accumulated lockout state across runs.
+
+### v1.0 — February 14, 2026
+- Initial release of StockSense Inventory Management System.
+- Node.js / Express 4 backend with PostgreSQL (Supabase).
+- Login page (`index.html`) with bcrypt password verification and express-session.
+- Dashboard (`dashboard.html` + `app.js`) with inventory table, client-side live search, and column sorting.
+- Add / Edit / Delete inventory items (Admin only) with duplicate SKU and negative stock protection.
+- Dispatch and Restock transactions with overdraft protection; all movements written to immutable audit trail.
+- Low-stock alert panel based on configurable minimum threshold per item.
+- Warranty status badge (Active / Expired / N/A) per item.
+- Real-time inventory updates delivered to all connected clients via Server-Sent Events (SSE).
+- Transaction history page (Admin only) — paginated (50 per page), searchable, sortable, CSV export.
+- Cross-browser compatibility confirmed on Google Chrome and Mozilla Firefox.
+- Node.js automated UAT test runner (`test-uat.js`) — 36 tests covering Auth, Inventory CRUD, Dispatch/Restock, History, and Stats.
+- UAT Cases CSV (`Test Script_StockSense_Group_3_BM1 - UAT Cases.csv`) — 125 documented test cases (TC-1 through TC-125).
