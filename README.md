@@ -145,6 +145,8 @@ The server will:
 - Delete items with automatic audit trail entry (Admin only)
 - Duplicate SKU and negative stock protection
 - Max ceiling / min threshold alerts
+- Stock allocation and deallocation — reserve units for future use without changing physical count
+- Server-side filtering via `?search=` (name/code/description), `?vendor=`, and `?low_stock=true` query parameters on `GET /api/inventory`
 
 ### Dashboard
 - Metric cards: Total SKUs, Allocated Stock, Low Stock, Overstocked
@@ -184,6 +186,10 @@ The server will:
 | `PUT` | `/api/inventory/:code` | Any | Dispatch or restock |
 | `PUT` | `/api/inventory/:code/details` | Admin | Edit item metadata |
 | `DELETE` | `/api/inventory/:code` | Admin | Delete item |
+| `POST` | `/api/inventory/:code/allocate` | Any | Reserve stock units (does not change physical count) |
+| `POST` | `/api/inventory/:code/deallocate` | Any | Release previously reserved stock units |
+
+> `GET /api/inventory` supports optional query parameters: `?search=` (name/code/description ILIKE), `?vendor=` (vendor name partial match), `?low_stock=true` (only items at or below their threshold).
 
 ### Stats & Alerts
 
@@ -197,15 +203,7 @@ The server will:
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/transactions` | Admin | Full history (paginated) |
-| `GET` | `/api/transactions/item/:code` | Any | Per-item history |
-
-### Admin — Users
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| `GET` | `/api/admin/users` | Admin | List all registered users |
-| `DELETE` | `/api/admin/users/:id` | Admin | Remove a user account |
-| `PUT` | `/api/admin/lockouts/:username/clear` | Admin | Clear a locked-out account |
+| `GET` | `/api/transactions/item/:code` | Any | Per-item history (staff-accessible; limited to 50 most recent per item) |
 
 ---
 
@@ -314,15 +312,25 @@ node server.js
 
 Expected output (SQLite mode):
 ```
-SQLite database is ready
-StockSense HTTP server is running on http://localhost:3000
+✅  StockSense HTTP server running → http://localhost:3000
+    Database: SQLite (local)
+    Attempting DB init…
+
+[DB] SQLite ready
+✅  Database ready. Login with:  admin / admin   |   staff / staff
 ```
 
 Expected output (Supabase mode):
 ```
+✅  StockSense HTTP server running → http://localhost:3000
+    Database: PostgreSQL (Supabase)
+    Attempting DB init…
+
 [DB] PostgreSQL (Supabase) ready
-StockSense HTTP server is running on http://localhost:3000
+✅  Database ready. Login with:  admin / admin   |   staff / staff
 ```
+
+> The server starts listening **before** the database is ready. The frontend is always served even if DB init is retried (up to 5 attempts, 5 s apart).
 
 ### Admin — Lockout Management
 
@@ -412,6 +420,7 @@ This uses `nodemon` to automatically restart the server on file changes.
 |---|---|
 | Backend API — Node.js (36 automated tests) | PASS |
 | Backend API — RSpec/Ruby (36 automated tests, +TC-10b) | PASS |
+| UAT Test Cases CSV (125 documented cases — TC-1 through TC-125) | 123 PASS / 2 Pending (TC-97 Safari, TC-99 physical audit) |
 | Login / Logout / Session | PASS |
 | Account lockout TC-10 (15-min rolling window, auto-reset) | FIXED & PASS |
 | TC-11 Case sensitivity | FIXED & PASS |
@@ -429,6 +438,6 @@ This uses `nodemon` to automatically restart the server on file changes.
 ## Known Notes
 
 - The logo filename is spelled `STOCKSENCE LOGO.png` (typo from original asset) — cosmetic only, does not affect functionality.
-- Password reset does not send a real email. In development mode the code is returned in the API response (`dev_code`) and logged to the server console. Wire a transactional email service (e.g. SendGrid, Nodemailer) in production.
-- The `loginAttempts` lockout map uses a **15-minute rolling window** — counters auto-reset after the window expires. This prevents permanent lockout of test usernames across repeated test runs. The map is still in-memory (resets on server restart); persist it in a database or Redis for production.
+- Password reset does not send a real email. In development mode the 6-digit code is returned in the API response (`dev_code`) and printed to the server console. The `resetCodes` store is **in-memory** — codes are lost on server restart. For production, wire a transactional email service (e.g. SendGrid, Nodemailer) and a persistent store.
+- The login lockout counter is stored in the **`login_attempts` database table** (both SQLite and PostgreSQL modes) and therefore survives server restarts. A **15-minute rolling window** ensures counters auto-reset once the window expires — counters never accumulate permanently. Admins can also force-clear a specific lockout early via `DELETE /api/admin/lockout/:username`.
 - **TC-10/11/12 fix**: Previously, repeated test runs accumulated lockout counts for test usernames (`ADMIN`, `nobody`, `' OR 1=1 --`) until they returned HTTP 429 instead of the expected 401, causing test failures. Fixed by: (1) 15-min rolling window in `server.js`, (2) unique per-run usernames in TC-10 RSpec tests, (3) accepting both 401 and 429 as valid rejection responses in TC-11 and TC-12.
