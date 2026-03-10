@@ -266,3 +266,74 @@ ON CONFLICT (code) DO NOTHING;
 -- Run:  node seed.js
 -- That script will insert the two default accounts securely.
 -- ============================================================
+
+-- ============================================================
+-- FUNCTIONS: stocksense_exec / stocksense_exec_tx
+-- Required by the @supabase/supabase-js HTTPS adapter in
+-- database.js so the backend works on networks that block
+-- raw PostgreSQL TCP traffic (ports 5432/6543).
+--
+-- HOW TO DEPLOY:
+--   Supabase Dashboard → SQL Editor → paste & run this block.
+-- ============================================================
+
+-- Single parameterised statement → returns rows as jsonb array
+CREATE OR REPLACE FUNCTION stocksense_exec(
+    p_sql    text,
+    p_params text[] DEFAULT '{}'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    rec record;
+    arr jsonb := '[]'::jsonb;
+BEGIN
+    FOR rec IN EXECUTE p_sql USING
+        p_params[1],  p_params[2],  p_params[3],  p_params[4],
+        p_params[5],  p_params[6],  p_params[7],  p_params[8],
+        p_params[9],  p_params[10], p_params[11]
+    LOOP
+        arr := arr || to_jsonb(rec);
+    END LOOP;
+    RETURN arr;
+EXCEPTION
+    WHEN others THEN RAISE;
+END;
+$$;
+
+-- Multiple statements in one atomic transaction → returns rows of last statement
+CREATE OR REPLACE FUNCTION stocksense_exec_tx(
+    p_statements jsonb   -- [{ "sql": "...", "params": ["v1", ...] }, ...]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    stmt record;
+    rec  record;
+    arr  jsonb := '[]'::jsonb;
+    p    text[];
+BEGIN
+    FOR stmt IN SELECT value FROM jsonb_array_elements(p_statements)
+    LOOP
+        arr := '[]'::jsonb;
+        SELECT array_agg(v::text) INTO p
+            FROM jsonb_array_elements_text((stmt.value)->'params') AS v;
+        IF p IS NULL THEN p := '{}'; END IF;
+
+        FOR rec IN EXECUTE ((stmt.value)->>'sql') USING
+            p[1],  p[2],  p[3],  p[4],
+            p[5],  p[6],  p[7],  p[8],
+            p[9],  p[10], p[11]
+        LOOP
+            arr := arr || to_jsonb(rec);
+        END LOOP;
+    END LOOP;
+    RETURN arr;
+END;
+$$;

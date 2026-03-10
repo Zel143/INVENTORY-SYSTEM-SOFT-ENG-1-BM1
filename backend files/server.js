@@ -728,8 +728,9 @@ async function startServer() {
     });
 
     // Attempt DB init with retries (non-blocking — server already listening)
-    const retries = 5;
-    const delayMs = 5000;
+    // Supabase free-tier projects auto-pause after 7 days; resuming can take ~60s
+    const retries = 8;
+    const delayMs = 15000;  // 15s between retries — covers the ~60s Supabase resume window
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             await initDB();
@@ -739,11 +740,18 @@ async function startServer() {
             console.error(`❌  DB init failed (attempt ${attempt}/${retries}): ${err.message}`);
             if (attempt < retries) {
                 console.error(`    Retrying in ${delayMs / 1000}s…`);
+                if (attempt === 1 && process.env.DATABASE_URL) {
+                    console.error('    TIP: Could not reach the database. Common causes:');
+                    console.error('      1. Your network/firewall is blocking outbound PostgreSQL traffic (ports 5432/6543).');
+                    console.error('         Fix: Use a VPN, mobile hotspot, or a network that allows PostgreSQL connections.');
+                    console.error('      2. Your machine lacks IPv6 internet access (Supabase direct host is IPv6-only).');
+                    console.error('      3. Supabase free-tier project is paused → https://supabase.com/dashboard');
+                }
                 await new Promise(r => setTimeout(r, delayMs));
             } else {
                 console.error('\n⚠️   All DB retries exhausted. API endpoints will return 500 until DB is reachable.');
                 const hint = process.env.DATABASE_URL
-                    ? '    → Check your DATABASE_URL in .env and Supabase connectivity'
+                    ? '    → Supabase free tier: resume your project at https://supabase.com/dashboard\n    → Or check your DATABASE_URL in .env'
                     : '    → Check that stocksense.db is accessible in the backend files/ directory';
                 console.error(hint + '\n');
             }
