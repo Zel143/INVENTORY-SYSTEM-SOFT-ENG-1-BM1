@@ -738,15 +738,13 @@ async function startServer() {
             return;
         } catch (err) {
             console.error(`❌  DB init failed (attempt ${attempt}/${retries}): ${err.message}`);
+            // One-time setup required (helper functions not deployed) — no point retrying
+            if (err.SETUP_REQUIRED) {
+                console.error('\n⚠️   Server is running but DB is not ready until helper functions are deployed (see above).\n');
+                return;
+            }
             if (attempt < retries) {
                 console.error(`    Retrying in ${delayMs / 1000}s…`);
-                if (attempt === 1 && process.env.DATABASE_URL) {
-                    console.error('    TIP: Could not reach the database. Common causes:');
-                    console.error('      1. Your network/firewall is blocking outbound PostgreSQL traffic (ports 5432/6543).');
-                    console.error('         Fix: Use a VPN, mobile hotspot, or a network that allows PostgreSQL connections.');
-                    console.error('      2. Your machine lacks IPv6 internet access (Supabase direct host is IPv6-only).');
-                    console.error('      3. Supabase free-tier project is paused → https://supabase.com/dashboard');
-                }
                 await new Promise(r => setTimeout(r, delayMs));
             } else {
                 console.error('\n⚠️   All DB retries exhausted. API endpoints will return 500 until DB is reachable.');

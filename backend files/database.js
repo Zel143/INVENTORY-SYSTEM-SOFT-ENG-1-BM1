@@ -121,73 +121,11 @@ if (USE_POSTGRES) {
 
     // ===================== INIT =====================
     async function initDB() {
-        // Step 1: Create the two helper stored functions if they don't exist yet.
-        // We use the REST API directly for this bootstrap step.
-        const bootstrapSQL = `
--- stocksense_exec: run a single parameterised SQL statement
-CREATE OR REPLACE FUNCTION stocksense_exec(p_sql text, p_params text[] DEFAULT '{}')
-RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  result jsonb;
-  rec    record;
-  arr    jsonb := '[]'::jsonb;
-BEGIN
-  -- Build a cursor from the parameterised query
-  FOR rec IN EXECUTE p_sql USING
-    p_params[1], p_params[2], p_params[3], p_params[4], p_params[5],
-    p_params[6], p_params[7], p_params[8], p_params[9], p_params[10],
-    p_params[11]
-  LOOP
-    arr := arr || to_jsonb(rec);
-  END LOOP;
-  RETURN arr;
-EXCEPTION
-  WHEN others THEN
-    RAISE;
-END;
-$$;
-
--- stocksense_exec_tx: run multiple statements inside one transaction,
--- return the rows of the last statement
-CREATE OR REPLACE FUNCTION stocksense_exec_tx(
-  p_statements jsonb   -- [{ "sql": "...", "params": ["v1","v2",...] }, ...]
-)
-RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  stmt   jsonb;
-  rec    record;
-  arr    jsonb := '[]'::jsonb;
-  p      text[];
-BEGIN
-  FOR stmt IN SELECT * FROM jsonb_array_elements(p_statements)
-  LOOP
-    arr := '[]'::jsonb;
-    SELECT array_agg(v::text) INTO p
-      FROM jsonb_array_elements_text(stmt->'params') AS v;
-    IF p IS NULL THEN p := '{}'; END IF;
-
-    FOR rec IN EXECUTE (stmt->>'sql') USING
-      p[1], p[2], p[3], p[4], p[5],
-      p[6], p[7], p[8], p[9], p[10], p[11]
-    LOOP
-      arr := arr || to_jsonb(rec);
-    END LOOP;
-  END LOOP;
-  RETURN arr;
-END;
-$$;
-        `;
-
-        // Use the Supabase management REST endpoint to bootstrap the functions.
-        // We call via raw fetch to /rest/v1/rpc — if functions already exist this is a no-op.
+        // Step 1: Verify the stocksense_exec helper function exists in Supabase.
+        // This function must be deployed once via the Supabase SQL Editor before the app starts.
+        let probeRes, probeBody;
         try {
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/stocksense_exec`, {
+            probeRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/stocksense_exec`, {
                 method: 'POST',
                 headers: {
                     'Content-Type':  'application/json',
@@ -196,39 +134,27 @@ $$;
                 },
                 body: JSON.stringify({ p_sql: 'SELECT 1 AS ok', p_params: [] })
             });
-            const body = await res.json();
-            if (!res.ok && (body.code === 'PGRST202' || body.message?.includes('does not exist'))) {
-                // Functions not yet created — bootstrap them
-                console.log('[DB] Creating helper functions on Supabase…');
-                const { error: dbErr } = await supabase.rpc('exec', { sql: bootstrapSQL }).catch(() => ({ error: 'no exec' }));
-                if (dbErr) {
-                    // Fall back: call Supabase SQL API directly via their admin endpoint
-                    const adminRes = await fetch(`${SUPABASE_URL}/pg/query`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type':  'application/json',
-                            'apikey':        SUPABASE_KEY,
-                            'Authorization': `Bearer ${SUPABASE_KEY}`
-                        },
-                        body: JSON.stringify({ query: bootstrapSQL })
-                    });
-                    if (!adminRes.ok) {
-                        const adminBody = await adminRes.json().catch(() => ({}));
-                        throw new Error(
-                            'Could not create helper functions. Please run the SQL in spec/supabase/schema.sql ' +
-                            'and add the two stocksense_exec functions via the Supabase SQL Editor.\n' +
-                            JSON.stringify(adminBody)
-                        );
-                    }
-                }
+            probeBody = await probeRes.json().catch(() => ({}));
+        } catch (networkErr) {
+            throw new Error(`Cannot reach Supabase at ${SUPABASE_URL}. Check your network or SUPABASE_URL in .env.\n${networkErr.message}`);
+        }
+
+        if (!probeRes.ok) {
+            const code = probeBody?.code || '';
+            const msg  = probeBody?.message || '';
+            if (code === 'PGRST202' || msg.includes('does not exist') || msg.includes('stocksense_exec')) {
+                // Functions not yet deployed — fail fast with clear instructions
+                const setupErr = new Error(
+                    'Supabase is reachable but the helper functions are not deployed yet.\n' +
+                    '→ Go to https://supabase.com/dashboard → SQL Editor\n' +
+                    '→ Paste and run the two CREATE FUNCTION blocks at the bottom of  spec/supabase/schema.sql\n' +
+                    '→ Then restart the server.'
+                );
+                setupErr.SETUP_REQUIRED = true;
+                throw setupErr;
             }
-        } catch (fetchErr) {
-            if (fetchErr.message && fetchErr.message.includes('helper functions')) throw fetchErr;
-            // If stocksense_exec doesn't exist, instruct user
-            throw new Error(
-                'Could not reach Supabase or helper functions missing.\n' +
-                '→ Open your Supabase project → SQL Editor and run the contents of spec/supabase/schema.sql'
-            );
+            // Some other HTTP error (wrong key, RLS, etc.)
+            throw new Error(`Supabase probe failed (HTTP ${probeRes.status}): ${msg || JSON.stringify(probeBody)}`);
         }
 
         // Step 2: Create application tables (idempotent)
