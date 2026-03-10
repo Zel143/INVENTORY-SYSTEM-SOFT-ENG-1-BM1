@@ -278,6 +278,7 @@ ON CONFLICT (code) DO NOTHING;
 -- ============================================================
 
 -- Single parameterised statement → returns rows as jsonb array
+-- Handles both row-returning queries (SELECT/WITH) and DDL/DML.
 CREATE OR REPLACE FUNCTION stocksense_exec(
     p_sql    text,
     p_params text[] DEFAULT '{}'
@@ -288,16 +289,30 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    rec record;
-    arr jsonb := '[]'::jsonb;
+    rec      record;
+    arr      jsonb := '[]'::jsonb;
+    sql_cmd  text;
 BEGIN
-    FOR rec IN EXECUTE p_sql USING
-        p_params[1],  p_params[2],  p_params[3],  p_params[4],
-        p_params[5],  p_params[6],  p_params[7],  p_params[8],
-        p_params[9],  p_params[10], p_params[11]
-    LOOP
-        arr := arr || to_jsonb(rec);
-    END LOOP;
+    -- Determine execution strategy based on first SQL keyword
+    sql_cmd := upper(split_part(trim(regexp_replace(p_sql, '\s+', ' ', 'g')), ' ', 1));
+
+    IF sql_cmd IN ('SELECT', 'WITH', 'TABLE') OR p_sql ~* '\mRETURNING\M' THEN
+        -- Row-returning query: open as cursor to collect rows
+        FOR rec IN EXECUTE p_sql USING
+            p_params[1],  p_params[2],  p_params[3],  p_params[4],
+            p_params[5],  p_params[6],  p_params[7],  p_params[8],
+            p_params[9],  p_params[10], p_params[11]
+        LOOP
+            arr := arr || to_jsonb(rec);
+        END LOOP;
+    ELSE
+        -- DDL or DML without RETURNING: plain execute (no cursor)
+        EXECUTE p_sql USING
+            p_params[1],  p_params[2],  p_params[3],  p_params[4],
+            p_params[5],  p_params[6],  p_params[7],  p_params[8],
+            p_params[9],  p_params[10], p_params[11];
+    END IF;
+
     RETURN arr;
 EXCEPTION
     WHEN others THEN RAISE;
@@ -314,25 +329,37 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    stmt record;
-    rec  record;
-    arr  jsonb := '[]'::jsonb;
-    p    text[];
+    stmt    record;
+    rec     record;
+    arr     jsonb := '[]'::jsonb;
+    p       text[];
+    sql_txt text;
+    sql_cmd text;
 BEGIN
     FOR stmt IN SELECT value FROM jsonb_array_elements(p_statements)
     LOOP
-        arr := '[]'::jsonb;
+        arr     := '[]'::jsonb;
+        sql_txt := (stmt.value)->>'sql';
+        sql_cmd := upper(split_part(trim(regexp_replace(sql_txt, '\s+', ' ', 'g')), ' ', 1));
+
         SELECT array_agg(v::text) INTO p
             FROM jsonb_array_elements_text((stmt.value)->'params') AS v;
         IF p IS NULL THEN p := '{}'; END IF;
 
-        FOR rec IN EXECUTE ((stmt.value)->>'sql') USING
-            p[1],  p[2],  p[3],  p[4],
-            p[5],  p[6],  p[7],  p[8],
-            p[9],  p[10], p[11]
-        LOOP
-            arr := arr || to_jsonb(rec);
-        END LOOP;
+        IF sql_cmd IN ('SELECT', 'WITH', 'TABLE') OR sql_txt ~* '\mRETURNING\M' THEN
+            FOR rec IN EXECUTE sql_txt USING
+                p[1],  p[2],  p[3],  p[4],
+                p[5],  p[6],  p[7],  p[8],
+                p[9],  p[10], p[11]
+            LOOP
+                arr := arr || to_jsonb(rec);
+            END LOOP;
+        ELSE
+            EXECUTE sql_txt USING
+                p[1],  p[2],  p[3],  p[4],
+                p[5],  p[6],  p[7],  p[8],
+                p[9],  p[10], p[11];
+        END IF;
     END LOOP;
     RETURN arr;
 END;
