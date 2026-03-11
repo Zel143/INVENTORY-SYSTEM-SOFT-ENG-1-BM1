@@ -97,8 +97,8 @@ function renderInventoryTable(data) {
                 <td class="font-bold text-dark">${item.code}</td>
                 <td><div class="desc-title">${item.name}</div><div class="desc-sub">${item.description || ''}</div></td>
                 <td class="text-muted">${item.vendor || '—'}</td>
-                <td ${stockStyle}>${item.current_stock}${overBadge}</td>
-                <td><span class="badge badge-gray">${item.allocated_stock} MA</span></td>
+                <td ${stockStyle}>${item.current_stock - item.allocated_stock}${overBadge}</td>
+                <td>${item.allocated_stock > 0 ? `<span class="badge badge-blue" title="${item.allocated_stock} unit(s) reserved out of ${item.current_stock} total"><i class="fas fa-lock" style="margin-right:4px;"></i>${item.allocated_stock} Reserved</span>` : '<span class="badge badge-gray">0</span>'}</td>
                 <td class="text-muted">${item.max_ceiling}</td>
                 <td>${wBadge}</td>
                 <td>

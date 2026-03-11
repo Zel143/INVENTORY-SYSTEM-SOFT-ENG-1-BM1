@@ -120,6 +120,7 @@ input:checked + .slider:before { transform: translateX(32px); }
 
 /* --- UTILITY BADGES --- */
 .badge-yellow { background: var(--color-yellow-light); color: #92400e; }
+.badge-blue { background: var(--accent-light); color: var(--accent-blue); }
 
 /* --- MODAL CLOSE BUTTON --- */
 .close { float: right; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); line-height: 1; }

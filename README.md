@@ -140,7 +140,9 @@ The server will:
 - Server-side filtering via `?search=` (name/code/description), `?vendor=`, and `?low_stock=true` query parameters on `GET /api/inventory`
 
 ### Dashboard
-- Metric cards: Total SKUs, Allocated Stock, Low Stock, Overstocked
+- Metric cards: Total SKUs, Reserved Stock, Low Stock, Overstocked
+- Inventory table "Available" column shows true available quantity (total stock minus reserved)
+- Reserved stock displayed with a blue lock-icon badge (e.g. "🔒 30 Reserved") with hover tooltip showing full breakdown
 - Low-stock alert panel
 - Real-time updates via Server-Sent Events — no page refresh needed
 
@@ -385,6 +387,12 @@ This uses `nodemon` to automatically restart the server on file changes.
 ---
 
 ## Changelog
+
+### v2.1 — March 11, 2026
+- **Dashboard**: "Allocated" column and metric card renamed to **Reserved** across the entire UI for clarity.
+- **Dashboard**: Inventory table "Available" column now displays true available stock (`current_stock − allocated_stock`) instead of total stock.
+- **Dashboard**: Reserved stock shown with a distinct blue badge and lock icon (e.g. `🔒 30 Reserved`); hovering reveals a tooltip with the full breakdown (reserved vs total). Items with zero reservations show a neutral gray `0` badge.
+- **CSS**: Added `badge-blue` style class for reserved stock indicators.
 
 ### v2.0 — March 9, 2026
 - **Documents**: Added Requirements Traceability Matrix (`Traceability Matrix_StockSense_Group_3_BM1.csv`) with 43 functional requirements (FR-1.0 – FR-43.0) cross-referenced to all 125 UAT test cases.
