@@ -388,6 +388,11 @@ This uses `nodemon` to automatically restart the server on file changes.
 
 ## Changelog
 
+### v2.2 — March 12, 2026
+- **Database**: Removed the Supabase `schema.sql` file, which contained the database schema definitions (schema is now managed entirely in `database.js`).
+- **Dependencies**: Added `package-lock.json` to lock and manage dependency versions.
+- **Database**: Updated binary files for the StockSense SQLite database (`db-shm` and `db-wal`).
+
 ### v2.1 — March 11, 2026
 - **Dashboard**: "Allocated" column and metric card renamed to **Reserved** across the entire UI for clarity.
 - **Dashboard**: Inventory table "Available" column now displays true available stock (`current_stock − allocated_stock`) instead of total stock.
