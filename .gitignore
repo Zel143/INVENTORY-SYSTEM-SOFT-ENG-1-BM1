@@ -2,4 +2,4 @@ node_modules/
 .env
 *.pdf
 *.code-workspace
-
+**/serviceAccountKey.json
