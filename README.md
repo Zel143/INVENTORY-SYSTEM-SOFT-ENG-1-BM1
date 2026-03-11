@@ -10,7 +10,7 @@
 
 ## Overview
 
-StockSense is a web-based inventory management system built with a Node.js/Express backend and a plain HTML/CSS/JavaScript frontend, backed by PostgreSQL. It supports role-based access (Admin and Staff), real-time inventory updates via Server-Sent Events (SSE), transaction history, low-stock alerts, and CSV export.
+StockSense is a web-based inventory management system built with a Node.js/Express backend and a plain HTML/CSS/JavaScript frontend, backed by a local SQLite database. It supports role-based access (Admin and Staff), real-time inventory updates via Server-Sent Events (SSE), transaction history, low-stock alerts, and CSV export.
 
 ---
 
@@ -20,7 +20,7 @@ StockSense is a web-based inventory management system built with a Node.js/Expre
 |---|---|
 | Runtime | Node.js |
 | Web Framework | Express 4 |
-| Database | PostgreSQL |
+| Database | SQLite via `better-sqlite3` |
 | Auth | express-session + bcryptjs |
 | Frontend | HTML5 / CSS3 / Vanilla JS |
 | Real-time | Server-Sent Events (SSE) |
@@ -36,7 +36,7 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 │
 ├── backend files/
 │   ├── server.js          # Express app — all API routes
-│   ├── database.js        # PostgreSQL pool + schema init
+│   ├── database.js        # SQLite database + schema init
 │   ├── package.json       # Dependencies
 │   └── .env               # Environment variables (not committed)
 │
@@ -62,7 +62,8 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 ## Prerequisites
 
 - **Node.js** v18 or later
-- A **Supabase** project (free tier is sufficient — [supabase.com](https://supabase.com))
+
+No external database service is required — SQLite runs locally as a file.
 
 ---
 
@@ -82,28 +83,18 @@ cd "backend files"
 npm install
 ```
 
-### 3. Set up the Supabase database
-
-1. Create a free project at [supabase.com](https://supabase.com)
-2. In your project, go to **SQL Editor**
-3. Copy the full contents of `spec/supabase/schema.sql` and run it — this creates all required tables
-4. Go to **Settings → Database** and copy the **Transaction pooler** connection string
-
-### 4. Configure environment variables
+### 3. Configure environment variables
 
 Create a `.env` file inside the `backend files/` folder (or edit the existing one):
 
 ```env
-DATABASE_URL=postgresql://postgres.<project-ref>:<password>@<host>.pooler.supabase.com:5432/postgres
 SESSION_SECRET=your-random-secret
 PORT=3000
 ```
 
-Replace the values with your actual Supabase project connection string from **Settings → Database → Transaction pooler**.
-
 > The `.env` file is **not committed** (it is listed in `.gitignore`). Never share or commit this file.
 
-### 5. Start the server
+### 4. Start the server
 
 ```bash
 cd "backend files"
@@ -111,8 +102,8 @@ node server.js
 ```
 
 The server will:
-1. Connect to Supabase PostgreSQL
-2. Seed default users if the `users` table is empty
+1. Create the SQLite database file (`stocksense.db`) automatically on first run
+2. Seed default users and sample inventory if the tables are empty
 3. Start listening on **http://localhost:3000**
 
 ---
@@ -189,7 +180,7 @@ The server will:
 | `POST` | `/api/inventory/:code/allocate` | Any | Reserve stock units (does not change physical count) |
 | `POST` | `/api/inventory/:code/deallocate` | Any | Release previously reserved stock units |
 
-> `GET /api/inventory` supports optional query parameters: `?search=` (name/code/description ILIKE), `?vendor=` (vendor name partial match), `?low_stock=true` (only items at or below their threshold).
+> `GET /api/inventory` supports optional query parameters: `?search=` (name/code/description LIKE), `?vendor=` (vendor name partial match), `?low_stock=true` (only items at or below their threshold).
 
 ### Stats & Alerts
 
@@ -209,54 +200,17 @@ The server will:
 
 ## Current System State *(updated March 2026)*
 
-### Database — Dual Mode
+### Database — SQLite
 
-The backend now supports **two database modes** selected automatically at startup:
+The backend uses **SQLite** via `better-sqlite3` as its database. The database file (`stocksense.db`) is created automatically in the `backend files/` directory on first startup. No external database service is needed.
 
-| Mode | When active | Storage |
-|---|---|---|
-| **SQLite** (default) | `DATABASE_URL` is **not** set in `.env` | `backend files/stocksense.db` (local file, auto-created) |
-| **PostgreSQL / Supabase** | `DATABASE_URL` **is** set in `.env` | Remote Supabase PostgreSQL |
-
-The database schema, seed data, and all query behaviour are identical in both modes. Switch between them by adding or removing `DATABASE_URL` in `.env` — no code changes needed.
-
-#### Running with SQLite (no external DB required)
-
-Remove or comment out `DATABASE_URL` in `backend files/.env`:
-
-```env
-# DATABASE_URL=postgresql://...   <-- leave this commented out for SQLite
-SESSION_SECRET=your-random-secret
-PORT=3000
-```
-
-On first start the server will create `stocksense.db` and seed default users and sample inventory automatically.
-
-#### Running with Supabase (PostgreSQL)
-
-1. Create a free project at [supabase.com](https://supabase.com)
-2. Go to **SQL Editor** and run the full contents of `spec/supabase/schema.sql`
-3. Go to **Settings → Database → Connection string → Transaction pooler** and copy the URI
-4. Set it in `backend files/.env`:
-
-```env
-DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
-SESSION_SECRET=your-random-secret
-PORT=3000
-```
-
-> The server will connect to Supabase on startup and seed default users if the `users` table is empty.
-
----
-
-### Updated Tech Stack
+### Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Runtime | Node.js |
 | Web Framework | Express 4 |
-| Database (default) | **SQLite via `better-sqlite3`** (local, no setup) |
-| Database (optional) | **PostgreSQL via Supabase** (set `DATABASE_URL`) |
+| Database | **SQLite via `better-sqlite3`** (local, no setup) |
 | Auth | express-session + bcryptjs |
 | Frontend | HTML5 / CSS3 / Vanilla JS |
 | Real-time | Server-Sent Events (SSE) |
@@ -282,7 +236,7 @@ The chosen role is accepted directly by `/api/register`. Login (`/api/login`) ac
 
 ### Seeded Default Data
 
-On first run (both SQLite and PostgreSQL modes) the following are auto-inserted if the tables are empty:
+On first run the following are auto-inserted if the tables are empty:
 
 **Users**
 
@@ -310,7 +264,7 @@ cd "backend files"
 node server.js
 ```
 
-Expected output (SQLite mode):
+Expected output:
 ```
 ✅  StockSense HTTP server running → http://localhost:3000
     Database: SQLite (local)
@@ -319,18 +273,6 @@ Expected output (SQLite mode):
 [DB] SQLite ready
 ✅  Database ready. Login with:  admin / admin   |   staff / staff
 ```
-
-Expected output (Supabase mode):
-```
-✅  StockSense HTTP server running → http://localhost:3000
-    Database: PostgreSQL (Supabase)
-    Attempting DB init…
-
-[DB] PostgreSQL (Supabase) ready
-✅  Database ready. Login with:  admin / admin   |   staff / staff
-```
-
-> The server starts listening **before** the database is ready. The frontend is always served even if DB init is retried (up to 5 attempts, 5 s apart).
 
 ### Admin — Lockout Management
 
@@ -361,8 +303,8 @@ Both test suites require the backend server to be running. Use **two separate te
 
 ### Terminal 1 — Start the server
 
-```powershell
-cd "e:\INVENTORY-SYSTEM-SOFT-ENG-1-BM1\backend files"
+```bash
+cd "backend files"
 node server.js
 ```
 
@@ -376,8 +318,7 @@ Open a second terminal, then run either or both suites:
 
 **RSpec suite** (Ruby — professor-required, 36 tests, TC-7 through TC-10b):
 
-```powershell
-cd "e:\INVENTORY-SYSTEM-SOFT-ENG-1-BM1"
+```bash
 rspec spec/stocksense_api_spec.rb
 ```
 
@@ -385,8 +326,7 @@ Expected output: **36 examples, 0 failures**
 
 **Node.js suite** (original, 36 tests):
 
-```powershell
-cd "e:\INVENTORY-SYSTEM-SOFT-ENG-1-BM1"
+```bash
 node test-uat.js
 ```
 

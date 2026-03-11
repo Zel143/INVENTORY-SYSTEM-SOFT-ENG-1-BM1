@@ -719,41 +719,18 @@ app.get('/api/events', requireAuth, (req, res) => {
 
 // ===================== START =====================
 async function startServer() {
-    // Start HTTP server first — frontend is always served regardless of DB state
-    const dbMode = process.env.DATABASE_URL ? 'PostgreSQL (Supabase)' : 'SQLite (local)';
     app.listen(PORT, () => {
         console.log(`\n✅  StockSense HTTP server running → http://localhost:${PORT}`);
-        console.log(`    Database: ${dbMode}`);
+        console.log(`    Database: SQLite (local)`);
         console.log(`    Attempting DB init…\n`);
     });
 
-    // Attempt DB init with retries (non-blocking — server already listening)
-    // Supabase free-tier projects auto-pause after 7 days; resuming can take ~60s
-    const retries = 8;
-    const delayMs = 15000;  // 15s between retries — covers the ~60s Supabase resume window
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-            await initDB();
-            console.log(`✅  Database ready. Login with:  admin / admin   |   staff / staff\n`);
-            return;
-        } catch (err) {
-            console.error(`❌  DB init failed (attempt ${attempt}/${retries}): ${err.message}`);
-            // One-time setup required (helper functions not deployed) — no point retrying
-            if (err.SETUP_REQUIRED) {
-                console.error('\n⚠️   Server is running but DB is not ready until helper functions are deployed (see above).\n');
-                return;
-            }
-            if (attempt < retries) {
-                console.error(`    Retrying in ${delayMs / 1000}s…`);
-                await new Promise(r => setTimeout(r, delayMs));
-            } else {
-                console.error('\n⚠️   All DB retries exhausted. API endpoints will return 500 until DB is reachable.');
-                const hint = process.env.DATABASE_URL
-                    ? '    → Supabase free tier: resume your project at https://supabase.com/dashboard\n    → Or check your DATABASE_URL in .env'
-                    : '    → Check that stocksense.db is accessible in the backend files/ directory';
-                console.error(hint + '\n');
-            }
-        }
+    try {
+        await initDB();
+        console.log(`✅  Database ready. Login with:  admin / admin   |   staff / staff\n`);
+    } catch (err) {
+        console.error(`❌  DB init failed: ${err.message}`);
+        console.error('    → Check that stocksense.db is accessible in the backend files/ directory\n');
     }
 }
 

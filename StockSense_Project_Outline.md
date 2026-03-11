@@ -19,13 +19,13 @@
 
 StockSense is a web-based inventory management system developed as a Software Engineering 1 course project. It enables warehouses or supply teams to track physical stock levels, log all movements, and receive real-time alerts — replacing manual spreadsheets with a secure, role-aware, database-backed application.
 
-The system supports two user roles (Admin and Staff), real-time browser updates via Server-Sent Events, a full immutable audit trail, and works with either a local SQLite file or a cloud PostgreSQL (Supabase) database with no code changes.
+The system supports two user roles (Admin and Staff), real-time browser updates via Server-Sent Events, a full immutable audit trail, and uses a local SQLite database with no external service required.
 
 ---
 
 ## 2. Objectives
 
-1. Build a production-grade inventory management system using Node.js and PostgreSQL
+1. Build a production-grade inventory management system using Node.js and SQLite
 2. Implement secure role-based access control (RBAC) with session authentication
 3. Prevent common warehouse data problems: stockouts, overstocking, and untracked movements
 4. Maintain a tamper-proof audit trail of all inventory transactions
@@ -74,8 +74,7 @@ The system supports two user roles (Admin and Staff), real-time browser updates 
 |---|---|---|
 | Runtime | Node.js (v18+) | Server environment |
 | Web Framework | Express 4 | HTTP routing and middleware |
-| Database (cloud) | PostgreSQL via Supabase | Production data store |
-| Database (local) | SQLite via `better-sqlite3` | Development / offline fallback |
+| Database | SQLite via `better-sqlite3` | Local file-based data store |
 | Authentication | express-session + bcryptjs | Secure session and password management |
 | Frontend | HTML5 / CSS3 / Vanilla JS | No build tool required |
 | Real-time | Server-Sent Events (SSE) | Live dashboard updates |
@@ -93,7 +92,7 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 │
 ├── backend files/
 │   ├── server.js               # Express app — all 30+ API routes
-│   ├── database.js             # DB pool, schema init, seed data
+│   ├── database.js             # SQLite database, schema init, seed data
 │   ├── package.json            # Node.js dependencies
 │   └── .env                    # Environment variables (not committed)
 │
@@ -109,7 +108,7 @@ INVENTORY-SYSTEM-SOFT-ENG-1-BM1/
 │   ├── spec_helper.rb          # RSpec HTTP helper utilities
 │   ├── stocksense_api_spec.rb  # RSpec UAT test suite
 │   └── supabase/
-│       └── schema.sql          # PostgreSQL schema for Supabase
+│       └── schema.sql          # Reference SQL schema (originally for Supabase)
 │
 ├── .rspec                      # RSpec default options
 ├── .gitignore                  # Excludes node_modules, .env, PDFs
@@ -149,12 +148,10 @@ Express Server (server.js)
         └── SSE              GET /api/events  (persistent connection)
                 │
                 ▼
-        PostgreSQL (Supabase)   OR   SQLite (local file)
+        SQLite (local file)
 ```
 
-**Database Mode Selection** — automatic at startup:
-- If `DATABASE_URL` is set in `.env` → uses **PostgreSQL / Supabase**
-- If `DATABASE_URL` is absent → uses **SQLite** (local file, auto-created, no setup needed)
+The system uses **SQLite** as its database. The database file (`stocksense.db`) is created automatically in the `backend files/` directory on first startup. No external database service is needed.
 
 ---
 
@@ -199,7 +196,7 @@ Express Server (server.js)
 | Pagination | 50 records per page; server returns `total`, `pages`, `page`, `limit` |
 | Search and Sort | Client-side filter by actor, item code, item name, destination, purpose |
 | CSV Export | Downloads current page as `.csv`; columns match on-screen table |
-| DB-Level Immutability | PostgreSQL `BEFORE DELETE` trigger blocks direct deletion of audit records |
+| DB-Level Immutability | Audit records are immutable; no edit/delete capability exposed in the UI or API |
 
 ### 8.5 Real-Time Updates (SSE)
 - All connected browsers maintain a persistent `GET /api/events` connection
@@ -272,7 +269,7 @@ Stores login credentials and roles.
 | full_name | TEXT | Display name |
 | password_hash | TEXT | bcrypt hash — plaintext never stored |
 | role | TEXT | `'admin'` or `'staff'` |
-| created_at / updated_at | TIMESTAMPTZ | Auto-managed |
+| created_at | TEXT | Auto-managed |
 
 ### `inventory`
 Core table — one row per warehouse item (SKU).
@@ -290,7 +287,7 @@ Core table — one row per warehouse item (SKU).
 | min_threshold | INTEGER | Low-stock alert level |
 | warranty_start | DATE | Nullable |
 | warranty_end | DATE | Nullable; drives Expired / Active badge |
-| created_at | TIMESTAMPTZ | Auto-set |
+| created_at | TEXT | Auto-set |
 
 ### `transactions`
 Immutable audit log — one row per movement.
@@ -304,7 +301,7 @@ Immutable audit log — one row per movement.
 | actor_name | TEXT | From server-side session — cannot be spoofed |
 | destination | TEXT | Required for dispatch |
 | purpose | TEXT | Optional work-order reference |
-| timestamp | TIMESTAMPTZ | Set by DB at insert time |
+| timestamp | TEXT | Set by DB at insert time |
 
 ### `login_attempts`
 Tracks consecutive failed logins per username for lockout enforcement.
@@ -313,7 +310,7 @@ Tracks consecutive failed logins per username for lockout enforcement.
 |---|---|---|
 | username | TEXT PK | |
 | attempts | INTEGER | Rolling count |
-| first_attempt | TIMESTAMPTZ | Start of current 15-min window |
+| first_attempt | TEXT | Start of current 15-min window |
 
 ---
 
@@ -364,7 +361,8 @@ Tracks consecutive failed logins per username for lockout enforcement.
 
 ### Prerequisites
 - **Node.js** v18 or later
-- (Optional) A free **Supabase** project for cloud PostgreSQL
+
+No external database service is required — SQLite runs locally as a file.
 
 ### Step 1 — Clone the Repository
 ```bash
@@ -381,18 +379,11 @@ npm install
 ### Step 3 — Configure Environment
 Create `backend files/.env`:
 ```env
-# For PostgreSQL / Supabase:
-DATABASE_URL=postgresql://postgres.<ref>:<password>@<host>.pooler.supabase.com:5432/postgres
 SESSION_SECRET=your-random-secret-here
 PORT=3000
-
-# For SQLite (local, no DB setup needed): leave DATABASE_URL commented out
 ```
 
-### Step 4 — (PostgreSQL only) Run Schema
-In the Supabase SQL Editor, paste and run the full contents of `spec/supabase/schema.sql`.
-
-### Step 5 — Start the Server
+### Step 4 — Start the Server
 ```bash
 node server.js
 ```
@@ -427,7 +418,7 @@ Server starts on **http://localhost:3000** and seeds default users on first run.
 | UAT Test Script (125 cases) | `Test Script_StockSense_Group_3_BM1 - UAT Cases.csv` |
 | Requirements Traceability Matrix | `Traceability Matrix_StockSense_Group_3_BM1.csv` |
 | System Specification & UAT Summary | `StockSense_Specification_Document.md` |
-| Database Schema (PostgreSQL) | `spec/supabase/schema.sql` |
+| Database Schema (reference) | `spec/supabase/schema.sql` |
 | API Reference and Setup Guide | `README.md` |
 | RSpec UAT Suite | `spec/stocksense_api_spec.rb` |
 

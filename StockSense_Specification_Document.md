@@ -15,7 +15,7 @@
 
 ## 1. System Overview
 
-StockSense is a web-based inventory management system built with a Node.js/Express backend and a plain HTML/CSS/JavaScript frontend, backed by a live PostgreSQL (Supabase) database. It supports:
+StockSense is a web-based inventory management system built with a Node.js/Express backend and a plain HTML/CSS/JavaScript frontend, backed by a local SQLite database. It supports:
 
 - Role-based access control (Admin and Staff)
 - Real-time inventory updates via Server-Sent Events (SSE)
@@ -33,7 +33,7 @@ StockSense is a web-based inventory management system built with a Node.js/Expre
 |---|---|
 | Runtime | Node.js |
 | Web Framework | Express 4 |
-| Database | PostgreSQL (Supabase) |
+| Database | SQLite via `better-sqlite3` |
 | Auth | express-session + bcryptjs |
 | Frontend | HTML5 / CSS3 / Vanilla JS |
 | Real-time | Server-Sent Events (SSE) |
@@ -73,7 +73,7 @@ StockSense is a web-based inventory management system built with a Node.js/Expre
 | FR-25.0 | Stock Replenishment (Restock) | Restock adds to current stock; source/vendor field mandatory; logged as stock addition | 72, 73 |
 | FR-26.0 | User Feedback via Toast Notifications | Green toast on success, red on failure; plain-language message; no blocking alert dialogs | 75, 76 |
 | FR-27.0 | Tamper-Proof Transaction Metadata | Timestamp set by DB at save time; actor name taken from server-side session (cannot be spoofed) | 79, 80 |
-| FR-28.0 | Immutable Audit Trail | History visible to Admin only; no edit/delete buttons in UI; PostgreSQL BEFORE DELETE trigger blocks direct deletion | 81, 82, 83, 84, 85 |
+| FR-28.0 | Immutable Audit Trail | History visible to Admin only; no edit/delete buttons in UI; audit records are immutable | 81, 82, 83, 84, 85 |
 | FR-29.0 | History Filtering and Sorting | History search filters by actor, item code, item name, destination, or purpose; Time/Item columns sortable | 86, 87, 88, 89 |
 | FR-30.0 | Server-Side History Pagination | History loads 50 records per page; server returns total/pages; Prev/Next disabled at boundaries | 90, 91, 92 |
 | FR-31.0 | CSV Export of Transaction History | Export button downloads current history page as CSV; columns match UI; special chars escaped | 93, 94 |
@@ -125,7 +125,7 @@ Previously failing frontend features (TC-23, TC-24–30, TC-34, TC-52–54, TC-5
 | Session Security | express-session with HttpOnly, SameSite=lax, 2-hour maxAge |
 | Account Lockout | 5 failed attempts triggers 15-min lockout; auto-resets via rolling window |
 | Role Enforcement | `requireAuth` / `requireAdmin` middleware on every protected route |
-| Immutable Audit Trail | PostgreSQL BEFORE DELETE trigger blocks audit record deletion |
+| Immutable Audit Trail | Audit records are immutable; no edit/delete capability exposed in the UI or API |
 | Anti-Enumeration | Forgot-password returns identical response for registered and unregistered emails |
 | Concurrency Safety | SELECT FOR UPDATE row-level locking prevents race conditions on dispatch |
 
