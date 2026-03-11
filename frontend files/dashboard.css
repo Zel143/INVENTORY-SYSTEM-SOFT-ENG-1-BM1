@@ -221,3 +221,75 @@ input:checked + .slider:before { transform: translateX(32px); }
     .form-grid { grid-template-columns: 1fr; }
     body { overflow: auto; height: auto; }
 }
+
+/* --- INFO BOXES (workflow explanation text) --- */
+.info-box {
+    background: var(--accent-light); color: var(--text-main);
+    padding: 12px 18px; border-radius: 12px; font-size: 0.85rem;
+    margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px;
+    border-left: 4px solid var(--accent-blue); line-height: 1.5;
+}
+.info-box i { color: var(--accent-blue); margin-top: 2px; flex-shrink: 0; }
+
+/* --- STOCK HEALTH FILTER DROPDOWN --- */
+.filter-select {
+    padding: 10px 15px; border-radius: 10px;
+    border: 1px solid var(--border-color); background: var(--bg-main);
+    color: var(--text-main); font-size: 0.85rem; outline: none;
+    cursor: pointer; min-width: 160px;
+}
+.filter-select:focus { border-color: var(--accent-blue); }
+
+/* --- COLOR-CODED INVENTORY ROWS --- */
+.row-normal { background: var(--color-green-light); }
+.row-low    { background: var(--color-yellow-light); }
+.row-out    { background: var(--color-red-light); }
+.row-over   { background: rgba(255, 206, 32, 0.12); }
+
+/* --- QUICK STOCK +/- BUTTONS --- */
+.quick-stock-group { display: inline-flex; align-items: center; gap: 4px; }
+.quick-btn {
+    width: 28px; height: 28px; border-radius: 50%; border: none;
+    font-size: 1rem; font-weight: 700; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: transform 0.15s, background 0.2s;
+}
+.quick-btn:hover { transform: scale(1.15); }
+.quick-btn:active { transform: scale(0.95); }
+.quick-btn-plus  { background: var(--color-green-light); color: var(--color-green); }
+.quick-btn-minus { background: var(--color-red-light); color: var(--color-red); }
+
+/* --- ALLOCATION TOGGLE BUTTONS --- */
+.alloc-toggle-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.alloc-toggle-btn {
+    flex: 1; padding: 10px 12px; border-radius: 10px; font-size: 0.8rem;
+    font-weight: 600; cursor: pointer; text-align: center;
+    border: 2px solid var(--border-color); background: var(--bg-main);
+    color: var(--text-muted); transition: all 0.2s;
+}
+.alloc-toggle-btn.active {
+    border-color: var(--accent-blue); background: var(--accent-light); color: var(--accent-blue);
+}
+
+/* --- PROFILE PAGE --- */
+.profile-card { text-align: center; }
+.profile-avatar { font-size: 4rem; color: var(--accent-blue); margin-bottom: 20px; }
+.profile-details { text-align: left; }
+.profile-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--border-color);
+    font-size: 0.95rem;
+}
+.profile-row:last-child { border-bottom: none; }
+.profile-label { color: var(--text-muted); font-weight: 600; font-size: 0.85rem; }
+
+/* --- USER MANAGEMENT TABLE --- */
+.badge-active  { background: var(--color-green-light); color: var(--color-green); }
+.badge-inactive { background: var(--color-red-light); color: var(--color-red); }
+
+/* --- ITEM HISTORY LINK --- */
+.history-link {
+    color: var(--accent-blue); cursor: pointer; font-size: 0.8rem;
+    text-decoration: underline; display: inline-block; margin-top: 2px;
+}
+.history-link:hover { opacity: 0.8; }

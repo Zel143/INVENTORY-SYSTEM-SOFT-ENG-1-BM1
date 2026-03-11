@@ -100,7 +100,7 @@ app.post('/api/login', async (req, res) => {
         }
 
         // TC-11: Exact case match; also accept email as login identifier
-        const user = (await pool.query('SELECT * FROM users WHERE username = $1 OR email = $1', [username])).rows[0];
+        const user = (await pool.query('SELECT * FROM users WHERE (username = $1 OR email = $1) AND is_active = 1', [username])).rows[0];
 
         // TC-12: bcrypt comparison prevents SQL injection / timing attacks
         if (!user || !bcrypt.compareSync(password, user.password_hash)) {
@@ -140,6 +140,7 @@ app.post('/api/login', async (req, res) => {
             id: user.id,
             username: user.username,
             full_name: user.full_name,
+            email: user.email,
             role: user.role
         };
 
@@ -286,14 +287,14 @@ app.delete('/api/admin/lockout/:username', requireAdmin, async (req, res) => {
 
 // TC-21: Load inventory — supports ?search=, ?vendor=, ?low_stock=true
 app.get('/api/inventory', requireAuth, async (req, res) => {
-    const { search, vendor, low_stock } = req.query;
+    const { search, vendor, low_stock, stock_health, category } = req.query;
     const conditions = [];
     const params = [];
 
     if (search) {
         params.push(`%${search}%`);
         const idx = params.length;
-        conditions.push(`(name ILIKE $${idx} OR code ILIKE $${idx} OR description ILIKE $${idx})`);
+        conditions.push(`(name ILIKE $${idx} OR code ILIKE $${idx} OR description ILIKE $${idx} OR category ILIKE $${idx})`);
     }
     if (vendor) {
         params.push(`%${vendor}%`);
@@ -301,6 +302,19 @@ app.get('/api/inventory', requireAuth, async (req, res) => {
     }
     if (low_stock === 'true') {
         conditions.push(`(min_threshold > 0 AND current_stock <= min_threshold)`);
+    }
+    if (category) {
+        params.push(`%${category}%`);
+        conditions.push(`category ILIKE $${params.length}`);
+    }
+    if (stock_health === 'low') {
+        conditions.push(`(min_threshold > 0 AND current_stock <= min_threshold)`);
+    } else if (stock_health === 'over') {
+        conditions.push(`(max_ceiling > 0 AND current_stock > max_ceiling)`);
+    } else if (stock_health === 'out') {
+        conditions.push(`current_stock = 0`);
+    } else if (stock_health === 'normal') {
+        conditions.push(`(current_stock > 0 AND (min_threshold = 0 OR current_stock > min_threshold) AND (max_ceiling = 0 OR current_stock <= max_ceiling))`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -330,10 +344,10 @@ app.get('/api/inventory/:code', requireAuth, async (req, res) => {
 app.post('/api/inventory', requireAdmin, async (req, res) => {
     const { code, name, description, vendor, delivery_date,
             current_stock, max_ceiling, min_threshold,
-            warranty_start, warranty_end, image } = req.body;
+            warranty_start, warranty_end, image, category, storage_location } = req.body;
 
-    if (!code) return res.status(400).json({ error: 'Item code is required' });
-    if (!name) return res.status(400).json({ error: 'Description/name is required' });
+    if (!code) return res.status(400).json({ error: 'Item code (SKU) is required' });
+    if (!name) return res.status(400).json({ error: 'Part name is required' });
 
     const qty   = parseInt(current_stock) || 0;
     const ceil  = parseInt(max_ceiling)   || 999;
@@ -348,10 +362,11 @@ app.post('/api/inventory', requireAdmin, async (req, res) => {
 
     try {
         await pool.query(`
-            INSERT INTO inventory (code, name, description, vendor, delivery_date, current_stock, allocated_stock, max_ceiling, min_threshold, warranty_start, warranty_end, image)
-            VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11)
+            INSERT INTO inventory (code, name, description, vendor, delivery_date, current_stock, allocated_stock, max_ceiling, min_threshold, warranty_start, warranty_end, image, category, storage_location)
+            VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13)
         `, [code, name, description || '', vendor || '', delivery_date || null,
-            qty, ceil, thresh, warranty_start || null, warranty_end || null, image || null]);
+            qty, ceil, thresh, warranty_start || null, warranty_end || null, image || null,
+            category || '', storage_location || '']);
 
         broadcast('inventory:added', { code });
         res.status(201).json({ success: true, message: 'Item added successfully' });
@@ -484,7 +499,7 @@ app.delete('/api/inventory/:code', requireAdmin, async (req, res) => {
 // TC-52 / TC-53 / TC-54: Edit item metadata (admin only)
 app.put('/api/inventory/:code/details', requireAdmin, async (req, res) => {
     const { name, description, vendor, delivery_date, max_ceiling, min_threshold,
-            warranty_start, warranty_end, allocated_stock, image } = req.body;
+            warranty_start, warranty_end, allocated_stock, image, category, storage_location } = req.body;
 
     const ceil   = parseInt(max_ceiling)    || 999;
     const thresh = parseInt(min_threshold)  || 0;
@@ -506,20 +521,22 @@ app.put('/api/inventory/:code/details', requireAdmin, async (req, res) => {
 
         await pool.query(`
             UPDATE inventory SET
-                name            = COALESCE($1, name),
-                description     = COALESCE($2, description),
-                vendor          = COALESCE($3, vendor),
-                delivery_date   = COALESCE($4, delivery_date),
-                max_ceiling     = $5,
-                min_threshold   = $6,
-                warranty_start  = $7,
-                warranty_end    = $8,
-                allocated_stock = $9,
-                image           = COALESCE($10, image)
-            WHERE code = $11
+                name             = COALESCE($1, name),
+                description      = COALESCE($2, description),
+                vendor           = COALESCE($3, vendor),
+                delivery_date    = COALESCE($4, delivery_date),
+                max_ceiling      = $5,
+                min_threshold    = $6,
+                warranty_start   = $7,
+                warranty_end     = $8,
+                allocated_stock  = $9,
+                image            = COALESCE($10, image),
+                category         = COALESCE($11, category),
+                storage_location = COALESCE($12, storage_location)
+            WHERE code = $13
         `, [name || null, description || null, vendor || null, delivery_date || null,
             ceil, thresh, warranty_start || null, warranty_end || null,
-            newAlloc, image || null, req.params.code]);
+            newAlloc, image || null, category || null, storage_location || null, req.params.code]);
 
         const updated = (await pool.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
         broadcast('inventory:updated', { code: req.params.code });
@@ -688,6 +705,209 @@ app.get('/api/low-stock', requireAuth, async (req, res) => {
             ORDER BY current_stock ASC
         `)).rows;
         res.json(items);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ===================== QUICK STOCK INCREMENT/DECREMENT =====================
+// Staff can update stock levels using +/- buttons on the dashboard
+app.post('/api/inventory/:code/quick-update', requireAuth, async (req, res) => {
+    const delta = parseInt(req.body.delta);
+    if (!delta || delta === 0) return res.status(400).json({ error: 'Delta must be non-zero' });
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const item = (await client.query(
+            'SELECT * FROM inventory WHERE code = $1 FOR UPDATE', [req.params.code]
+        )).rows[0];
+        if (!item) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Item not found' }); }
+
+        const newStock = item.current_stock + delta;
+        if (newStock < 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Stock cannot go below zero' }); }
+        if (newStock < item.allocated_stock) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Cannot reduce below allocated stock' });
+        }
+
+        await client.query('UPDATE inventory SET current_stock = $1 WHERE code = $2', [newStock, req.params.code]);
+        await client.query(`
+            INSERT INTO transactions (inventory_code, item_name, transaction_type, quantity_change, actor_id, actor_name, purpose)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [req.params.code, item.name, delta > 0 ? 'addition' : 'dispatch', delta,
+            req.session.user.id, req.session.user.username, 'Quick stock update']);
+
+        const updated = (await client.query('SELECT * FROM inventory WHERE code = $1', [req.params.code])).rows[0];
+        await client.query('COMMIT');
+        broadcast('inventory:updated', { code: req.params.code });
+        res.json({ success: true, item: updated });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        res.status(500).json({ error: err.message });
+    } finally { client.release(); }
+});
+
+// ===================== USER PROFILE =====================
+app.get('/api/profile', requireAuth, async (req, res) => {
+    try {
+        const user = (await pool.query(
+            'SELECT id, username, full_name, email, role, is_active, created_at FROM users WHERE id = $1',
+            [req.session.user.id]
+        )).rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ===================== ADMIN: USER MANAGEMENT =====================
+// List all users
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+    try {
+        const users = (await pool.query(
+            'SELECT id, username, full_name, email, role, is_active, created_at FROM users ORDER BY id'
+        )).rows;
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Create a user (admin creates warehouse personnel)
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+    const { full_name, username: rawUsername, email, password, role: rawRole } = req.body;
+    if (!full_name || !email || !password) {
+        return res.status(400).json({ error: 'Full name, email, and password are required' });
+    }
+    if (password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const username = rawUsername ? rawUsername.trim().toLowerCase()
+        : email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+        return res.status(400).json({ error: 'Username must be 3–30 characters (letters, numbers, underscore only)' });
+    }
+    const role = (rawRole === 'admin') ? 'admin' : 'staff';
+    try {
+        const hash = bcrypt.hashSync(password, 10);
+        await pool.query(
+            'INSERT INTO users (username, full_name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
+            [username, full_name, email, hash, role]
+        );
+        res.status(201).json({ success: true, message: 'User created successfully', username, role });
+    } catch (err) {
+        if (err.code === '23505') return res.status(400).json({ error: 'Username or email already taken' });
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Deactivate a user account (revoke access without deleting audit data)
+app.put('/api/admin/users/:id/deactivate', requireAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (userId === req.session.user.id) {
+        return res.status(400).json({ error: 'Cannot deactivate your own account' });
+    }
+    try {
+        const result = await pool.query('UPDATE users SET is_active = 0 WHERE id = $1', [userId]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, message: 'User deactivated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Reactivate a user account
+app.put('/api/admin/users/:id/activate', requireAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    try {
+        const result = await pool.query('UPDATE users SET is_active = 1 WHERE id = $1', [userId]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, message: 'User activated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete a user account (admin only)
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    if (userId === req.session.user.id) {
+        return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+    try {
+        const result = await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, message: 'User deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ===================== REPORTS =====================
+// Summarized inventory report filtered by date range and/or category
+app.get('/api/reports/inventory', requireAdmin, async (req, res) => {
+    const { start_date, end_date, category } = req.query;
+    const conditions = [];
+    const params = [];
+
+    if (category) {
+        params.push(`%${category}%`);
+        conditions.push(`i.category ILIKE $${params.length}`);
+    }
+
+    const txConditions = [];
+    const txParams = [];
+    if (start_date) {
+        txParams.push(start_date);
+        txConditions.push(`t.timestamp >= $${txParams.length}`);
+    }
+    if (end_date) {
+        txParams.push(end_date + 'T23:59:59Z');
+        txConditions.push(`t.timestamp <= $${txParams.length}`);
+    }
+
+    try {
+        // Inventory summary
+        const invWhere = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        const items = (await pool.query(`
+            SELECT code, name, category, current_stock, allocated_stock, min_threshold, max_ceiling,
+                   CASE WHEN current_stock = 0 THEN 'out-of-stock'
+                        WHEN min_threshold > 0 AND current_stock <= min_threshold THEN 'low'
+                        WHEN max_ceiling > 0 AND current_stock > max_ceiling THEN 'over'
+                        ELSE 'normal' END AS stock_health
+            FROM inventory i ${invWhere}
+            ORDER BY code
+        `, params)).rows;
+
+        // Transaction summary within date range
+        const allTxConditions = [...txConditions];
+        const allTxParams = [...txParams];
+        if (category) {
+            allTxParams.push(`%${category}%`);
+            allTxConditions.push(`i.category ILIKE $${allTxParams.length}`);
+        }
+        const txWhere = allTxConditions.length ? `WHERE ${allTxConditions.join(' AND ')}` : '';
+        const txSummary = (await pool.query(`
+            SELECT t.transaction_type, COUNT(*) AS count, COALESCE(SUM(ABS(t.quantity_change)), 0) AS total_qty
+            FROM transactions t
+            LEFT JOIN inventory i ON t.inventory_code = i.code
+            ${txWhere}
+            GROUP BY t.transaction_type
+        `, allTxParams)).rows;
+
+        const totalItems = items.length;
+        const lowStock = items.filter(i => i.stock_health === 'low').length;
+        const outOfStock = items.filter(i => i.stock_health === 'out-of-stock').length;
+        const overStock = items.filter(i => i.stock_health === 'over').length;
+
+        res.json({
+            summary: { totalItems, lowStock, outOfStock, overStock },
+            items,
+            transactions: txSummary,
+            filters: { start_date, end_date, category }
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

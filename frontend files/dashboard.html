@@ -22,7 +22,6 @@
                 <i class="fas fa-bars"></i>
             </button>
             <img src="STOCKSENCE LOGO.png" alt="StockSense" class="header-logo">
-            <h1>StockSense</h1>
         </div>
         <div class="header-controls">
             <span id="user-display" class="user-badge"></span>
@@ -42,6 +41,9 @@
                 <a href="#" class="nav-item active" onclick="switchTab('tracker', this)"><i class="fas fa-map-marker-alt"></i> Tracker</a>
                 <a href="#" class="nav-item" onclick="switchTab('log-stocks', this)"><i class="fas fa-clipboard-list"></i> Log Stocks</a>
                 <a href="#" class="nav-item" onclick="switchTab('history', this)"><i class="fas fa-check-circle"></i> Inventory History</a>
+                <a href="#" class="nav-item admin-only" onclick="switchTab('users', this)"><i class="fas fa-users-cog"></i> User Management</a>
+                <a href="#" class="nav-item admin-only" onclick="switchTab('reports', this)"><i class="fas fa-chart-bar"></i> Reports</a>
+                <a href="#" class="nav-item" onclick="switchTab('profile', this)"><i class="fas fa-user-circle"></i> Profile</a>
             </nav>
             <div class="sidebar-footer">
                 <a href="#" onclick="logout()" class="nav-item text-danger"><i class="fas fa-sign-out-alt"></i> Logout</a>
@@ -51,6 +53,7 @@
         <main class="main-content">
             <div id="view-tracker" class="view-section active">
                 <h2 class="section-title">Core Inventory Status</h2>
+                <div class="info-box"><i class="fas fa-info-circle"></i> This dashboard shows real-time stock levels across all SKUs. Green rows are healthy, yellow means low stock, and red means out-of-stock. Use the filter to narrow by stock health status.</div>
                 
                 <div class="metrics-grid">
                     <div class="metric-card card-blue"><h4>Total SKUs</h4><div class="metric-value"><span id="stat-total">—</span> items</div></div>
@@ -62,13 +65,21 @@
                 <div class="dashboard-grid">
                     <div class="table-container panel">
                         <div class="table-toolbar">
-                            <input type="text" id="search-bar" class="search-input" oninput="filterInventory(this.value)" placeholder="&#128269; Search by code, name, vendor…">
+                            <input type="text" id="search-bar" class="search-input" oninput="filterInventory(this.value)" placeholder="&#128269; Search by SKU, part name, category, vendor…">
+                            <select id="stock-health-filter" class="filter-select" onchange="applyStockHealthFilter()">
+                                <option value="">All Stock</option>
+                                <option value="normal">Normal (Green)</option>
+                                <option value="low">Low Stock (Yellow)</option>
+                                <option value="out">Out-of-Stock (Red)</option>
+                                <option value="over">Overstock</option>
+                            </select>
                         </div>
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th class="sortable" onclick="sortTable('code')">Code <i class="fas fa-sort"></i></th>
-                                    <th class="sortable" onclick="sortTable('name')">Description <i class="fas fa-sort"></i></th>
+                                    <th class="sortable" onclick="sortTable('code')">SKU <i class="fas fa-sort"></i></th>
+                                    <th class="sortable" onclick="sortTable('name')">Part Name <i class="fas fa-sort"></i></th>
+                                    <th class="sortable" onclick="sortTable('category')">Category <i class="fas fa-sort"></i></th>
                                     <th class="sortable" onclick="sortTable('vendor')">Vendor <i class="fas fa-sort"></i></th>
                                     <th class="sortable" onclick="sortTable('current_stock')">Available <i class="fas fa-sort"></i></th>
                                     <th>Reserved</th>
@@ -90,13 +101,16 @@
 
             <div id="view-log-stocks" class="view-section" style="display: none;">
                 <h2 class="section-title">Log Stocks Inventory</h2>
+                <div class="info-box admin-only"><i class="fas fa-info-circle"></i> Use this form to add new inventory items. All fields marked with * are mandatory. SKU must be unique across the system.</div>
                 <div class="panel">
                     <form id="addItemForm" class="add-item-form">
                         <div class="form-grid">
-                            <div class="form-group"><label>Item Code *</label><input type="text" id="add-code" placeholder="e.g. SKU-101" required></div>
-                            <div class="form-group"><label>Name *</label><input type="text" id="add-name" placeholder="e.g. Industrial Motor" required></div>
-                            <div class="form-group"><label>Details</label><input type="text" id="add-desc" placeholder="Specs, notes…"></div>
+                            <div class="form-group"><label>SKU (Item Code) *</label><input type="text" id="add-code" placeholder="e.g. SKU-101" required></div>
+                            <div class="form-group"><label>Part Name *</label><input type="text" id="add-name" placeholder="e.g. Industrial Motor" required></div>
+                            <div class="form-group"><label>Category *</label><input type="text" id="add-category" placeholder="e.g. Motors, Pumps, Electronics" required></div>
+                            <div class="form-group"><label>Description</label><input type="text" id="add-desc" placeholder="Specs, notes…"></div>
                             <div class="form-group"><label>Vendor</label><input type="text" id="add-vendor" placeholder="Supplier name"></div>
+                            <div class="form-group"><label>Storage Location</label><input type="text" id="add-storage" placeholder="e.g. Aisle A, Rack 3"></div>
                             <div class="form-group"><label>Delivery Date</label><input type="date" id="add-delivery"></div>
                             <div class="form-group"><label>Initial Qty *</label><input type="number" id="add-qty" min="0" value="0" required></div>
                             <div class="form-group"><label>Min Threshold</label><input type="number" id="add-min" min="0" value="0" placeholder="Low-stock alert level"></div>
@@ -111,6 +125,7 @@
 
             <div id="view-history" class="view-section" style="display: none;">
                 <h2 class="section-title">Transaction History</h2>
+                <div class="info-box"><i class="fas fa-info-circle"></i> This log tracks every stock movement including dispatches, restocks, allocations, and deletions. Each entry records the user, timestamp, and quantity change for full traceability.</div>
                 <div class="panel">
                     <div class="table-toolbar">
                         <input type="text" id="history-search" class="search-input" oninput="filterHistory(this.value)" placeholder="&#128269; Search by item, user, destination…">
@@ -132,6 +147,100 @@
                         <button id="pag-prev" class="btn-pag" onclick="loadHistoryPage(histPage - 1)">&#8249; Prev</button>
                         <span id="pag-info" class="pag-info"></span>
                         <button id="pag-next" class="btn-pag" onclick="loadHistoryPage(histPage + 1)">Next &#8250;</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ADMIN: User Management -->
+            <div id="view-users" class="view-section admin-only" style="display: none;">
+                <h2 class="section-title">User Management</h2>
+                <div class="info-box"><i class="fas fa-info-circle"></i> Manage warehouse personnel accounts. You can create new users, deactivate accounts to revoke access (preserving audit history), or reactivate them.</div>
+                <div class="panel">
+                    <h3 style="margin-bottom:15px;">Create New User</h3>
+                    <form id="adminCreateUserForm" class="add-item-form">
+                        <div class="form-grid">
+                            <div class="form-group"><label>Full Name *</label><input type="text" id="admin-user-name" required></div>
+                            <div class="form-group"><label>Username *</label><input type="text" id="admin-user-username" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_]+"></div>
+                            <div class="form-group"><label>Email *</label><input type="email" id="admin-user-email" required></div>
+                            <div class="form-group"><label>Password *</label><input type="password" id="admin-user-pass" required minlength="8"></div>
+                            <div class="form-group">
+                                <label>Role *</label>
+                                <select id="admin-user-role" class="filter-select" required>
+                                    <option value="staff">Staff</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary mt-3">Create User</button>
+                    </form>
+                </div>
+                <div class="panel">
+                    <h3 style="margin-bottom:15px;">All System Users</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Full Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ADMIN: Reports -->
+            <div id="view-reports" class="view-section admin-only" style="display: none;">
+                <h2 class="section-title">Inventory Reports</h2>
+                <div class="info-box"><i class="fas fa-info-circle"></i> Generate summarized inventory reports. Filter by date range to see transactions within a period, or by category to focus on specific item types.</div>
+                <div class="panel">
+                    <h3 style="margin-bottom:15px;">Report Filters</h3>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Start Date</label><input type="date" id="report-start"></div>
+                        <div class="form-group"><label>End Date</label><input type="date" id="report-end"></div>
+                        <div class="form-group"><label>Category</label><input type="text" id="report-category" placeholder="e.g. Motors"></div>
+                        <div class="form-group" style="display:flex;align-items:flex-end;"><button class="btn-primary" onclick="generateReport()">Generate Report</button></div>
+                    </div>
+                </div>
+                <div id="report-results" style="display:none;">
+                    <div class="metrics-grid" id="report-metrics"></div>
+                    <div class="panel">
+                        <h3 style="margin-bottom:15px;">Transaction Summary</h3>
+                        <table class="data-table">
+                            <thead><tr><th>Type</th><th>Count</th><th>Total Qty</th></tr></thead>
+                            <tbody id="report-tx-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="panel">
+                        <h3 style="margin-bottom:15px;">Item Details</h3>
+                        <table class="data-table">
+                            <thead><tr><th>SKU</th><th>Name</th><th>Category</th><th>Stock</th><th>Reserved</th><th>Health</th></tr></thead>
+                            <tbody id="report-items-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Page -->
+            <div id="view-profile" class="view-section" style="display: none;">
+                <h2 class="section-title">My Profile</h2>
+                <div class="info-box"><i class="fas fa-info-circle"></i> Your account details and assigned role within the StockSense system.</div>
+                <div class="panel" style="max-width:500px;">
+                    <div class="profile-card">
+                        <div class="profile-avatar"><i class="fas fa-user-circle"></i></div>
+                        <div class="profile-details">
+                            <div class="profile-row"><span class="profile-label">Full Name</span><span id="profile-fullname">—</span></div>
+                            <div class="profile-row"><span class="profile-label">Username</span><span id="profile-username">—</span></div>
+                            <div class="profile-row"><span class="profile-label">Email</span><span id="profile-email">—</span></div>
+                            <div class="profile-row"><span class="profile-label">Role</span><span id="profile-role" class="badge">—</span></div>
+                            <div class="profile-row"><span class="profile-label">Account Status</span><span id="profile-status">—</span></div>
+                            <div class="profile-row"><span class="profile-label">Member Since</span><span id="profile-created">—</span></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -186,8 +295,10 @@
             <input type="hidden" id="edit-code">
             <form id="editForm">
                 <div class="form-grid">
-                    <div class="form-group"><label>Name *</label><input type="text" id="edit-name" required></div>
-                    <div class="form-group"><label>Details</label><input type="text" id="edit-desc" placeholder="Specs, notes…"></div>
+                    <div class="form-group"><label>Part Name *</label><input type="text" id="edit-name" required></div>
+                    <div class="form-group"><label>Category</label><input type="text" id="edit-category"></div>
+                    <div class="form-group"><label>Description</label><input type="text" id="edit-desc" placeholder="Specs, notes…"></div>
+                    <div class="form-group"><label>Storage Location</label><input type="text" id="edit-storage" placeholder="e.g. Aisle A, Rack 3"></div>
                     <div class="form-group"><label>Vendor</label><input type="text" id="edit-vendor"></div>
                     <div class="form-group"><label>Delivery Date</label><input type="date" id="edit-delivery"></div>
                     <div class="form-group"><label>Allocated Stock</label><input type="number" id="edit-qty" min="0" value="0"></div>
@@ -199,6 +310,45 @@
                 <div class="modal-actions mt-4">
                     <button type="button" class="btn-cancel" onclick="closeEditModal()">Cancel</button>
                     <button type="submit" class="btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Item History Modal (Staff can view recent movements for individual parts) -->
+    <div id="itemHistoryModal" class="modal">
+        <div class="modal-content" style="width:600px;max-width:95vw;">
+            <span class="close" onclick="closeItemHistoryModal()">&times;</span>
+            <h3>Movement History: <span id="item-history-code"></span></h3>
+            <p class="text-muted mb-3">Recent stock movements for this item</p>
+            <table class="data-table">
+                <thead><tr><th>Time</th><th>User</th><th>Type</th><th>Change</th><th>Notes</th></tr></thead>
+                <tbody id="item-history-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Allocation Toggle Modal -->
+    <div id="allocModal" class="modal">
+        <div class="modal-content" style="width:400px;">
+            <span class="close" onclick="closeAllocModal()">&times;</span>
+            <h3>Allocate / Deallocate: <span id="alloc-code-display"></span></h3>
+            <p id="alloc-subtitle" class="text-muted mb-3"></p>
+            <form id="allocForm">
+                <input type="hidden" id="alloc-code">
+                <div class="form-group">
+                    <label>Action</label>
+                    <div class="alloc-toggle-group">
+                        <button type="button" class="alloc-toggle-btn active" id="alloc-btn-reserve" onclick="setAllocAction('allocate')">Reserve (Available → Reserved)</button>
+                        <button type="button" class="alloc-toggle-btn" id="alloc-btn-release" onclick="setAllocAction('deallocate')">Release (Reserved → Available)</button>
+                    </div>
+                </div>
+                <input type="hidden" id="alloc-action" value="allocate">
+                <div class="form-group"><label>Quantity</label><input type="number" id="alloc-qty" min="1" value="1" required></div>
+                <div class="form-group"><label>Purpose</label><input type="text" id="alloc-purpose" placeholder="e.g. Reserved for WO-456"></div>
+                <div class="modal-actions mt-4">
+                    <button type="button" class="btn-cancel" onclick="closeAllocModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Confirm</button>
                 </div>
             </form>
         </div>

@@ -18,9 +18,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupAddItemForm();
     setupTransactionForm();
     setupEditForm();
+    setupAllocForm();
+    setupAdminCreateUserForm();
     subscribeSSE();
+    requestCameraPermission();
 
-    // Hide admin-only elements for staff users (TC-9)
+    // Hide admin-only elements for staff users
     if (currentUser.role !== 'admin') {
         document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
     }
@@ -64,13 +67,13 @@ function renderInventoryTable(data) {
     list.innerHTML = '';
 
     if (!data.length) {
-        list.innerHTML = '<tr><td colspan="8" class="empty-row">No inventory items found</td></tr>';
+        list.innerHTML = '<tr><td colspan="9" class="empty-row">No inventory items found</td></tr>';
         return;
     }
 
     const today = new Date();
     data.forEach(item => {
-        // Warranty badge (TC-35 / TC-36)
+        // Warranty badge
         let wBadge = '<span class="badge badge-gray">N/A</span>';
         if (item.warranty_end) {
             wBadge = new Date(item.warranty_end) < today
@@ -78,11 +81,20 @@ function renderInventoryTable(data) {
                 : '<span class="badge badge-green">Active</span>';
         }
 
-        // TC-31 / TC-34: Low-stock and overstock row indicators
-        const isLow  = item.min_threshold > 0 && item.current_stock <= item.min_threshold;
-        const isOver = item.max_ceiling   > 0 && item.current_stock >  item.max_ceiling;
-        const stockStyle = isLow  ? 'style="color:var(--color-red);font-weight:700;"' : '';
-        const overBadge  = isOver ? '<span class="badge badge-yellow" title="Overstock" style="margin-left:4px;">Over</span>' : '';
+        // Stock health: color-coded rows
+        const isOut  = item.current_stock === 0;
+        const isLow  = !isOut && item.min_threshold > 0 && item.current_stock <= item.min_threshold;
+        const isOver = item.max_ceiling > 0 && item.current_stock > item.max_ceiling;
+        const isNormal = !isOut && !isLow && !isOver;
+
+        let rowClass = '';
+        if (isOut)       rowClass = 'row-out';
+        else if (isLow)  rowClass = 'row-low';
+        else if (isOver) rowClass = 'row-over';
+        else             rowClass = 'row-normal';
+
+        const available = item.current_stock - item.allocated_stock;
+        const overBadge = isOver ? '<span class="badge badge-yellow" title="Overstock" style="margin-left:4px;">Over</span>' : '';
 
         const isAdmin   = currentUser?.role === 'admin';
         const deleteBtn = isAdmin
@@ -91,26 +103,38 @@ function renderInventoryTable(data) {
         const editBtn   = isAdmin
             ? `<button class="btn-icon text-blue admin-only" onclick="openEditModal('${item.code}')" title="Edit"><i class="fas fa-edit"></i></button>`
             : '';
+        const allocBtn  = `<button class="btn-icon" onclick="openAllocModal('${item.code}')" title="Allocate/Deallocate" style="color:var(--accent-blue);"><i class="fas fa-exchange-alt"></i></button>`;
+
+        // Sanitize code for use in onclick handlers
+        const safeCode = item.code.replace(/'/g, "\\'");
 
         list.innerHTML += `
-            <tr>
+            <tr class="${rowClass}">
                 <td class="font-bold text-dark">${item.code}</td>
-                <td><div class="desc-title">${item.name}</div><div class="desc-sub">${item.description || ''}</div></td>
+                <td><div class="desc-title">${item.name}</div><div class="desc-sub">${item.description || ''}</div>
+                    <span class="history-link" onclick="openItemHistoryModal('${safeCode}')"><i class="fas fa-history"></i> View History</span></td>
+                <td class="text-muted">${item.category || '—'}</td>
                 <td class="text-muted">${item.vendor || '—'}</td>
-                <td ${stockStyle}>${item.current_stock - item.allocated_stock}${overBadge}</td>
-                <td>${item.allocated_stock > 0 ? `<span class="badge badge-blue" title="${item.allocated_stock} unit(s) reserved out of ${item.current_stock} total"><i class="fas fa-lock" style="margin-right:4px;"></i>${item.allocated_stock} Reserved</span>` : '<span class="badge badge-gray">0</span>'}</td>
+                <td>
+                    <div class="quick-stock-group">
+                        <button class="quick-btn quick-btn-minus" onclick="quickStockUpdate('${safeCode}', -1)" title="-1">−</button>
+                        <span style="min-width:40px;text-align:center;font-weight:700;">${available}${overBadge}</span>
+                        <button class="quick-btn quick-btn-plus" onclick="quickStockUpdate('${safeCode}', 1)" title="+1">+</button>
+                    </div>
+                </td>
+                <td>${item.allocated_stock > 0 ? `<span class="badge badge-blue" title="${item.allocated_stock} reserved / ${item.current_stock} total"><i class="fas fa-lock" style="margin-right:4px;"></i>${item.allocated_stock}</span>` : '<span class="badge badge-gray">0</span>'}</td>
                 <td class="text-muted">${item.max_ceiling}</td>
                 <td>${wBadge}</td>
                 <td>
-                    <button class="btn-icon text-green" onclick="openModal('${item.code}','in')" title="Restock"><i class="fas fa-plus-circle"></i></button>
-                    <button class="btn-icon text-red"   onclick="openModal('${item.code}','out')" title="Dispatch"><i class="fas fa-minus-circle"></i></button>
-                    ${editBtn}${deleteBtn}
+                    <button class="btn-icon text-green" onclick="openModal('${safeCode}','in')" title="Restock"><i class="fas fa-plus-circle"></i></button>
+                    <button class="btn-icon text-red"   onclick="openModal('${safeCode}','out')" title="Dispatch"><i class="fas fa-minus-circle"></i></button>
+                    ${allocBtn}${editBtn}${deleteBtn}
                 </td>
             </tr>`;
     });
 }
 
-// TC-24 – TC-30: Search / Filter
+// Search / Filter — by SKU, Part Name, Category, vendor
 function filterInventory(query) {
     if (!query.trim()) { renderInventoryTable(inventoryData); return; }
     const q = query.toLowerCase();
@@ -118,7 +142,8 @@ function filterInventory(query) {
         i.code.toLowerCase().includes(q)        ||
         i.name.toLowerCase().includes(q)        ||
         (i.description || '').toLowerCase().includes(q) ||
-        (i.vendor      || '').toLowerCase().includes(q)
+        (i.vendor      || '').toLowerCase().includes(q) ||
+        (i.category    || '').toLowerCase().includes(q)
     ));
 }
 
@@ -277,16 +302,18 @@ function setupAddItemForm() {
         btn.textContent = 'Saving…';
 
         const payload = {
-            code:           document.getElementById('add-code')?.value,
-            name:           document.getElementById('add-name')?.value,
-            description:    document.getElementById('add-desc')?.value,
-            vendor:         document.getElementById('add-vendor')?.value,
-            delivery_date:  document.getElementById('add-delivery')?.value,
-            current_stock:  document.getElementById('add-qty')?.value,
-            max_ceiling:    document.getElementById('add-max')?.value,
-            min_threshold:  document.getElementById('add-min')?.value,
-            warranty_start: document.getElementById('add-warranty-start')?.value,
-            warranty_end:   document.getElementById('add-warranty-end')?.value,
+            code:            document.getElementById('add-code')?.value,
+            name:            document.getElementById('add-name')?.value,
+            category:        document.getElementById('add-category')?.value,
+            description:     document.getElementById('add-desc')?.value,
+            vendor:          document.getElementById('add-vendor')?.value,
+            storage_location:document.getElementById('add-storage')?.value,
+            delivery_date:   document.getElementById('add-delivery')?.value,
+            current_stock:   document.getElementById('add-qty')?.value,
+            max_ceiling:     document.getElementById('add-max')?.value,
+            min_threshold:   document.getElementById('add-min')?.value,
+            warranty_start:  document.getElementById('add-warranty-start')?.value,
+            warranty_end:    document.getElementById('add-warranty-end')?.value,
         };
 
         try {
@@ -475,7 +502,9 @@ function openEditModal(code) {
     el('edit-code-display').textContent = code;
     el('edit-code').value           = code;
     el('edit-name').value           = item.name           || '';
+    el('edit-category').value       = item.category       || '';
     el('edit-desc').value           = item.description    || '';
+    el('edit-storage').value        = item.storage_location || '';
     el('edit-vendor').value         = item.vendor         || '';
     el('edit-delivery').value       = item.delivery_date  || '';
     el('edit-qty').value            = item.allocated_stock || 0;
@@ -500,7 +529,9 @@ function setupEditForm() {
         const code = document.getElementById('edit-code').value;
         const payload = {
             name:            document.getElementById('edit-name').value,
+            category:        document.getElementById('edit-category').value,
             description:     document.getElementById('edit-desc').value,
+            storage_location:document.getElementById('edit-storage').value,
             vendor:          document.getElementById('edit-vendor').value,
             delivery_date:   document.getElementById('edit-delivery').value,
             allocated_stock: parseInt(document.getElementById('edit-qty').value) || 0,
@@ -560,9 +591,319 @@ async function logout() {
 function switchTab(tab, el) {
     document.querySelectorAll('.view-section').forEach(s => s.style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.getElementById('view-' + tab).style.display = 'block';
+    const section = document.getElementById('view-' + tab);
+    if (section) section.style.display = 'block';
     if (el) el.classList.add('active');
     // Close sidebar on mobile after navigation
     document.querySelector('.sidebar')?.classList.remove('sidebar-open');
     if (tab === 'history') { histPage = 1; loadHistory(1); }
+    if (tab === 'users' && currentUser?.role === 'admin') { loadUsers(); }
+    if (tab === 'profile') { loadProfile(); }
+}
+
+// ===================== STOCK HEALTH FILTER =====================
+function applyStockHealthFilter() {
+    const filter = document.getElementById('stock-health-filter')?.value;
+    if (!filter) { renderInventoryTable(inventoryData); return; }
+    renderInventoryTable(inventoryData.filter(item => {
+        const isOut = item.current_stock === 0;
+        const isLow = !isOut && item.min_threshold > 0 && item.current_stock <= item.min_threshold;
+        const isOver = item.max_ceiling > 0 && item.current_stock > item.max_ceiling;
+        if (filter === 'out') return isOut;
+        if (filter === 'low') return isLow;
+        if (filter === 'over') return isOver;
+        if (filter === 'normal') return !isOut && !isLow && !isOver;
+        return true;
+    }));
+}
+
+// ===================== QUICK STOCK +/- =====================
+async function quickStockUpdate(code, delta) {
+    try {
+        const res = await fetch(`/api/inventory/${code}/quick-update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ delta })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data.error || 'Update failed', 'error');
+        } else {
+            showToast(delta > 0 ? 'Stock +1 ✓' : 'Stock -1 ✓', 'success');
+            await Promise.all([loadInventory(), loadStats(), loadAlerts()]);
+        }
+    } catch {
+        showToast('Network error', 'error');
+    }
+}
+
+// ===================== ALLOCATION TOGGLE MODAL =====================
+function openAllocModal(code) {
+    const item = inventoryData.find(i => i.code === code);
+    if (!item) return;
+    document.getElementById('allocModal').style.display = 'flex';
+    document.getElementById('alloc-code').value = code;
+    document.getElementById('alloc-code-display').textContent = code;
+    document.getElementById('alloc-qty').value = 1;
+    document.getElementById('alloc-purpose').value = '';
+    const available = item.current_stock - item.allocated_stock;
+    document.getElementById('alloc-subtitle').textContent =
+        `Available: ${available} | Reserved: ${item.allocated_stock} | Total: ${item.current_stock}`;
+    setAllocAction('allocate');
+}
+
+function closeAllocModal() {
+    document.getElementById('allocModal').style.display = 'none';
+}
+
+function setAllocAction(action) {
+    document.getElementById('alloc-action').value = action;
+    document.getElementById('alloc-btn-reserve').classList.toggle('active', action === 'allocate');
+    document.getElementById('alloc-btn-release').classList.toggle('active', action === 'deallocate');
+}
+
+function setupAllocForm() {
+    const form = document.getElementById('allocForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type=submit]');
+        btn.disabled = true;
+        const code = document.getElementById('alloc-code').value;
+        const action = document.getElementById('alloc-action').value;
+        const qty = parseInt(document.getElementById('alloc-qty').value);
+        const purpose = document.getElementById('alloc-purpose').value;
+        if (!qty || qty <= 0) { showToast('Quantity must be greater than zero', 'error'); btn.disabled = false; return; }
+        try {
+            const res = await fetch(`/api/inventory/${code}/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quantity: qty, purpose })
+            });
+            const data = await res.json();
+            if (!res.ok) showToast(data.error || 'Failed', 'error');
+            else {
+                closeAllocModal();
+                showToast(action === 'allocate' ? 'Stock reserved ✓' : 'Stock released ✓', 'success');
+                await Promise.all([loadInventory(), loadStats()]);
+            }
+        } catch { showToast('Network error', 'error'); }
+        finally { btn.disabled = false; }
+    });
+}
+
+// ===================== ITEM HISTORY MODAL =====================
+async function openItemHistoryModal(code) {
+    document.getElementById('itemHistoryModal').style.display = 'flex';
+    document.getElementById('item-history-code').textContent = code;
+    const tbody = document.getElementById('item-history-body');
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Loading…</td></tr>';
+    try {
+        const res = await fetch(`/api/transactions/item/${encodeURIComponent(code)}`);
+        const data = await res.json();
+        if (!data.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-row">No movements recorded</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        data.forEach(t => {
+            const sign = t.quantity_change > 0 ? '+' : '';
+            const cls = t.quantity_change > 0 ? 'text-green' : 'text-red';
+            tbody.innerHTML += `<tr>
+                <td class="text-muted" style="font-size:0.85rem;">${new Date(t.timestamp).toLocaleString()}</td>
+                <td>${t.actor_name || 'System'}</td>
+                <td>${t.transaction_type}</td>
+                <td class="${cls} font-bold">${sign}${t.quantity_change}</td>
+                <td>${t.destination || t.purpose || '—'}</td>
+            </tr>`;
+        });
+    } catch {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Failed to load history</td></tr>';
+    }
+}
+
+function closeItemHistoryModal() {
+    document.getElementById('itemHistoryModal').style.display = 'none';
+}
+
+// ===================== PROFILE PAGE =====================
+async function loadProfile() {
+    try {
+        const res = await fetch('/api/profile');
+        const user = await res.json();
+        const el = id => document.getElementById(id);
+        el('profile-fullname').textContent = user.full_name || '—';
+        el('profile-username').textContent = user.username || '—';
+        el('profile-email').textContent = user.email || '—';
+        const roleBadge = el('profile-role');
+        roleBadge.textContent = user.role === 'admin' ? 'Administrator' : 'Staff';
+        roleBadge.className = 'badge ' + (user.role === 'admin' ? 'badge-blue' : 'badge-green');
+        el('profile-status').innerHTML = user.is_active
+            ? '<span class="badge badge-active">Active</span>'
+            : '<span class="badge badge-inactive">Inactive</span>';
+        el('profile-created').textContent = user.created_at ? new Date(user.created_at).toLocaleDateString() : '—';
+    } catch { /* non-critical */ }
+}
+
+// ===================== ADMIN: USER MANAGEMENT =====================
+async function loadUsers() {
+    try {
+        const res = await fetch('/api/admin/users');
+        const users = await res.json();
+        const tbody = document.getElementById('users-list');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        if (!users.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No users found</td></tr>';
+            return;
+        }
+        users.forEach(u => {
+            const statusBadge = u.is_active
+                ? '<span class="badge badge-active">Active</span>'
+                : '<span class="badge badge-inactive">Inactive</span>';
+            const roleBadge = u.role === 'admin'
+                ? '<span class="badge badge-blue">Admin</span>'
+                : '<span class="badge badge-green">Staff</span>';
+            const toggleBtn = u.is_active
+                ? `<button class="btn-icon text-red" onclick="toggleUserActive(${u.id}, false)" title="Deactivate"><i class="fas fa-user-slash"></i></button>`
+                : `<button class="btn-icon text-green" onclick="toggleUserActive(${u.id}, true)" title="Activate"><i class="fas fa-user-check"></i></button>`;
+            const deleteBtn = `<button class="btn-icon text-muted" onclick="deleteUser(${u.id}, '${u.username}')" title="Delete"><i class="fas fa-trash-alt"></i></button>`;
+            tbody.innerHTML += `<tr>
+                <td>${u.id}</td>
+                <td class="font-bold">${u.username}</td>
+                <td>${u.full_name}</td>
+                <td class="text-muted">${u.email}</td>
+                <td>${roleBadge}</td>
+                <td>${statusBadge}</td>
+                <td class="text-muted" style="font-size:0.85rem;">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                <td>${toggleBtn}${deleteBtn}</td>
+            </tr>`;
+        });
+    } catch { showToast('Failed to load users', 'error'); }
+}
+
+async function toggleUserActive(id, activate) {
+    const action = activate ? 'activate' : 'deactivate';
+    try {
+        const res = await fetch(`/api/admin/users/${id}/${action}`, { method: 'PUT' });
+        const data = await res.json();
+        if (!res.ok) showToast(data.error || 'Failed', 'error');
+        else { showToast(`User ${action}d ✓`, 'success'); loadUsers(); }
+    } catch { showToast('Network error', 'error'); }
+}
+
+async function deleteUser(id, username) {
+    if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+    try {
+        const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) showToast(data.error || 'Failed', 'error');
+        else { showToast('User deleted ✓', 'success'); loadUsers(); }
+    } catch { showToast('Network error', 'error'); }
+}
+
+function setupAdminCreateUserForm() {
+    const form = document.getElementById('adminCreateUserForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type=submit]');
+        btn.disabled = true;
+        const payload = {
+            full_name: document.getElementById('admin-user-name').value,
+            username:  document.getElementById('admin-user-username').value.trim().toLowerCase(),
+            email:     document.getElementById('admin-user-email').value,
+            password:  document.getElementById('admin-user-pass').value,
+            role:      document.getElementById('admin-user-role').value
+        };
+        try {
+            const res = await fetch('/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok) showToast(data.error || 'Failed', 'error');
+            else {
+                showToast('User created ✓', 'success');
+                form.reset();
+                loadUsers();
+            }
+        } catch { showToast('Network error', 'error'); }
+        finally { btn.disabled = false; }
+    });
+}
+
+// ===================== REPORTS =====================
+async function generateReport() {
+    const startDate = document.getElementById('report-start')?.value || '';
+    const endDate = document.getElementById('report-end')?.value || '';
+    const category = document.getElementById('report-category')?.value || '';
+
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (category) params.set('category', category);
+
+    try {
+        const res = await fetch(`/api/reports/inventory?${params}`);
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Report failed', 'error'); return; }
+
+        document.getElementById('report-results').style.display = 'block';
+
+        // Metrics
+        const metrics = document.getElementById('report-metrics');
+        metrics.innerHTML = `
+            <div class="metric-card card-blue"><h4>Total Items</h4><div class="metric-value"><span>${data.summary.totalItems}</span></div></div>
+            <div class="metric-card card-yellow"><h4>Low Stock</h4><div class="metric-value"><span>${data.summary.lowStock}</span></div></div>
+            <div class="metric-card card-red"><h4>Out of Stock</h4><div class="metric-value"><span>${data.summary.outOfStock}</span></div></div>
+            <div class="metric-card card-light"><h4>Overstock</h4><div class="metric-value"><span>${data.summary.overStock}</span></div></div>
+        `;
+
+        // Transaction summary
+        const txBody = document.getElementById('report-tx-body');
+        txBody.innerHTML = '';
+        if (data.transactions.length) {
+            data.transactions.forEach(t => {
+                txBody.innerHTML += `<tr><td>${t.transaction_type}</td><td>${t.count}</td><td>${t.total_qty}</td></tr>`;
+            });
+        } else {
+            txBody.innerHTML = '<tr><td colspan="3" class="empty-row">No transactions in this period</td></tr>';
+        }
+
+        // Item details
+        const itemsBody = document.getElementById('report-items-body');
+        itemsBody.innerHTML = '';
+        data.items.forEach(item => {
+            const healthBadge = {
+                'normal': '<span class="badge badge-green">Normal</span>',
+                'low': '<span class="badge badge-yellow">Low</span>',
+                'out-of-stock': '<span class="badge badge-red">Out</span>',
+                'over': '<span class="badge badge-yellow">Over</span>'
+            }[item.stock_health] || '<span class="badge badge-gray">—</span>';
+            itemsBody.innerHTML += `<tr>
+                <td class="font-bold">${item.code}</td>
+                <td>${item.name}</td>
+                <td class="text-muted">${item.category || '—'}</td>
+                <td>${item.current_stock}</td>
+                <td>${item.allocated_stock}</td>
+                <td>${healthBadge}</td>
+            </tr>`;
+        });
+
+        showToast('Report generated ✓', 'success');
+    } catch { showToast('Network error', 'error'); }
+}
+
+// ===================== CAMERA PERMISSION (future barcode scanning) =====================
+function requestCameraPermission() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    // Only request on mobile devices
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => { stream.getTracks().forEach(t => t.stop()); })
+            .catch(() => { /* user denied — non-blocking */ });
+    }
 }
