@@ -84,7 +84,7 @@ app.post('/api/login', (req, res) => {
     if (la) {
         const firstAttempt = new Date(la.first_attempt).getTime();
         if (la.first_attempt < windowStart) {
-            db.prepare('UPDATE login_attempts SET attempt_count = 0, first_attempt = datetime("now") WHERE username = ?').run(username);
+            db.prepare(`UPDATE login_attempts SET attempt_count = 0, first_attempt = datetime('now') WHERE username = ?`).run(username);
         } else if (la.attempt_count >= MAX_ATTEMPTS) {
             const lockedUntil = firstAttempt + LOCKOUT_MS;
             const waitMins    = Math.ceil((lockedUntil - now) / 60000);
@@ -102,11 +102,11 @@ app.post('/api/login', (req, res) => {
         const existing = db.prepare('SELECT * FROM login_attempts WHERE username = ?').get(username);
         let newCount;
         if (!existing) {
-            db.prepare('INSERT INTO login_attempts (username, attempt_count, first_attempt) VALUES (?, 1, datetime("now"))').run(username);
+            db.prepare(`INSERT INTO login_attempts (username, attempt_count, first_attempt) VALUES (?, 1, datetime('now'))`).run(username);
             newCount = 1;
         } else {
             if (existing.first_attempt < windowStart) {
-                db.prepare('UPDATE login_attempts SET attempt_count = 1, first_attempt = datetime("now") WHERE username = ?').run(username);
+                db.prepare(`UPDATE login_attempts SET attempt_count = 1, first_attempt = datetime('now') WHERE username = ?`).run(username);
                 newCount = 1;
             } else {
                 newCount = existing.attempt_count + 1;
@@ -659,5 +659,13 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`    Local:    http://localhost:${PORT}`);
     console.log(`    Network:  http://${lanIP}:${PORT}  <- share this with other devices`);
     console.log(`    Database: SQLite (local)\n`);
+
+    // Auto-open browser to localhost
+    const url = `http://localhost:${PORT}`;
+    const { exec } = require('child_process');
+    const cmd = process.platform === 'win32' ? `start ${url}`
+              : process.platform === 'darwin' ? `open ${url}`
+              : `xdg-open ${url}`;
+    exec(cmd);
 });
 
