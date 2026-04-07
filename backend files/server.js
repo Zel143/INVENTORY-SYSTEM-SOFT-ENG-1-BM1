@@ -1,11 +1,70 @@
 ﻿'use strict';
 require('dotenv').config();
-const express  = require('express');
-const session  = require('express-session');
-const bcrypt   = require('bcryptjs');
-const path     = require('path');
-const os       = require('os');
+const express    = require('express');
+const session    = require('express-session');
+const bcrypt     = require('bcryptjs');
+const path       = require('path');
+const os         = require('os');
+const nodemailer = require('nodemailer');
 const { db, initDB } = require('./database');
+
+// ===================== EMAIL TRANSPORTER =====================
+const isRealSMTP = process.env.SMTP_USER
+    && process.env.SMTP_PASS
+    && process.env.SMTP_USER !== 'your-email@gmail.com'
+    && process.env.SMTP_PASS !== 'your-app-password';
+
+let emailTransporter = null;
+
+async function initEmail() {
+    if (isRealSMTP) {
+        emailTransporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: parseInt(process.env.SMTP_PORT) || 587,
+            secure: false,
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            }
+        });
+        console.log(`[Email] SMTP configured — sending via ${process.env.SMTP_HOST || 'smtp.gmail.com'}`);
+    } else {
+        try {
+            const testAccount = await nodemailer.createTestAccount();
+            emailTransporter = nodemailer.createTransport({
+                host: 'smtp.ethereal.email',
+                port: 587,
+                secure: false,
+                auth: { user: testAccount.user, pass: testAccount.pass }
+            });
+            console.log('[Email] Dev mode — using Ethereal test mailbox');
+            console.log(`        View emails at: https://ethereal.email/login`);
+            console.log(`        Credentials: ${testAccount.user} / ${testAccount.pass}`);
+        } catch {
+            console.log('[Email] Dev mode — SMTP not configured, codes shown on-screen');
+        }
+    }
+}
+
+async function sendResetEmail(toEmail, code) {
+    const mailOptions = {
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: toEmail,
+        subject: 'StockSense - Password Reset Code',
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
+                <h2 style="color: #2d3748; text-align: center;">StockSense Password Reset</h2>
+                <p style="color: #4a5568;">You requested a password reset. Use the code below to verify your identity:</p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2b6cb0; background: #ebf8ff; padding: 12px 24px; border-radius: 8px;">${code}</span>
+                </div>
+                <p style="color: #718096; font-size: 14px;">This code expires in <strong>15 minutes</strong>.</p>
+                <p style="color: #a0aec0; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
+            </div>
+        `
+    };
+    return emailTransporter.sendMail(mailOptions);
+}
 
 function getLanIP() {
     const ifaces = os.networkInterfaces();
@@ -164,7 +223,7 @@ app.post('/api/register', (req, res) => {
     }
 });
 
-app.post('/api/forgot-password', (req, res) => {
+app.post('/api/forgot-password', async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
@@ -176,8 +235,24 @@ app.post('/api/forgot-password', (req, res) => {
     resetCodes.set(email.toLowerCase(), { code, expires });
     console.log(`[Password Reset] Code for ${email}: ${code}  (expires in 15 min)`);
 
-    const isDev = process.env.NODE_ENV !== 'production';
-    res.json({ success: true, message: 'Access code generated.', ...(isDev ? { dev_code: code } : {}) });
+    // Send email (real SMTP or Ethereal dev mailbox)
+    if (emailTransporter) {
+        try {
+            const info = await sendResetEmail(email.toLowerCase(), code);
+            const previewUrl = nodemailer.getTestMessageUrl(info);
+            if (previewUrl) {
+                console.log(`[Password Reset] Preview email: ${previewUrl}`);
+                return res.json({ success: true, message: 'Access code sent! Open the email to get your code.', preview_url: previewUrl });
+            }
+            console.log(`[Password Reset] Email sent to ${email}`);
+            return res.json({ success: true, message: 'Access code sent to your email.' });
+        } catch (err) {
+            console.error('[Password Reset] Email send failed:', err.message);
+        }
+    }
+
+    // Fallback: return code in response
+    res.json({ success: true, message: 'Access code generated.', dev_code: code });
 });
 
 app.post('/api/verify-reset-code', (req, res) => {
@@ -193,8 +268,37 @@ app.post('/api/verify-reset-code', (req, res) => {
     if (entry.code !== String(code).trim())
         return res.status(400).json({ error: 'Incorrect code. Please try again.' });
 
+    // Mark as verified but keep for password reset (extend 10 min)
+    resetCodes.set(email.toLowerCase(), { code: entry.code, expires: Date.now() + 10 * 60 * 1000, verified: true });
+    res.json({ success: true, message: 'Code verified. Set your new password.' });
+});
+
+app.post('/api/reset-password', (req, res) => {
+    const { email, code, new_password } = req.body;
+    if (!email || !code || !new_password)
+        return res.status(400).json({ error: 'Email, code, and new password are required' });
+    if (new_password.length < 8)
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const entry = resetCodes.get(email.toLowerCase());
+    if (!entry || !entry.verified)
+        return res.status(400).json({ error: 'Code not verified. Please start over.' });
+    if (Date.now() > entry.expires) {
+        resetCodes.delete(email.toLowerCase());
+        return res.status(400).json({ error: 'Session expired. Please request a new code.' });
+    }
+    if (entry.code !== String(code).trim())
+        return res.status(400).json({ error: 'Invalid code.' });
+
+    const user = db.prepare('SELECT id FROM users WHERE email = ? AND is_active = 1').get(email.toLowerCase());
+    if (!user) return res.status(400).json({ error: 'User not found.' });
+
+    const hash = bcrypt.hashSync(new_password, 10);
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, user.id);
     resetCodes.delete(email.toLowerCase());
-    res.json({ success: true, message: 'Code verified. You may now log in.' });
+    db.prepare('DELETE FROM login_attempts WHERE username = (SELECT username FROM users WHERE id = ?)').run(user.id);
+
+    res.json({ success: true, message: 'Password reset successful. You can now log in.' });
 });
 
 app.get('/api/admin/lockouts', requireAdmin, (req, res) => {
@@ -653,6 +757,7 @@ app.get('/api/events', requireAuth, (req, res) => {
 
 // ===================== START =====================
 initDB();
+initEmail();
 app.listen(PORT, '0.0.0.0', () => {
     const lanIP = getLanIP();
     console.log(`\nâœ…  StockSense HTTP server running`);

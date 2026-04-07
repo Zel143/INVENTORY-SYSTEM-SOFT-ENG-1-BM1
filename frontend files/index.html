@@ -63,7 +63,24 @@
                 <input type="text" id="accessCode" class="input-field" placeholder="XXXXXX" style="text-align: center; letter-spacing: 3px; font-weight: bold;" maxlength="6" required>
             </div>
             <div class="form-group">
-                <button type="submit" class="login-btn">Verify & Login</button>
+                <button type="submit" class="login-btn">Verify Code</button>
+            </div>
+            <div class="form-footer center-footer mt-4">
+                <a href="#" class="backToLoginLink">Back to Login</a>
+            </div>
+        </form>
+
+        <form id="newPasswordForm" style="display: none;">
+            <h2>Set New Password</h2>
+            <p class="reset-instruction">Enter your new password below.</p>
+            <div class="form-group">
+                <input type="password" id="newPassword" class="input-field" placeholder="New Password (min 8 chars)" minlength="8" required>
+            </div>
+            <div class="form-group">
+                <input type="password" id="confirmNewPassword" class="input-field" placeholder="Confirm New Password" minlength="8" required>
+            </div>
+            <div class="form-group">
+                <button type="submit" class="login-btn">Reset Password</button>
             </div>
             <div class="form-footer center-footer mt-4">
                 <a href="#" class="backToLoginLink">Back to Login</a>
@@ -83,9 +100,10 @@
         });
 
         // --- 2. Form references ---
-        const loginForm      = document.getElementById('loginForm');
-        const resetForm      = document.getElementById('resetForm');
-        const verifyCodeForm = document.getElementById('verifyCodeForm');
+        const loginForm       = document.getElementById('loginForm');
+        const resetForm       = document.getElementById('resetForm');
+        const verifyCodeForm  = document.getElementById('verifyCodeForm');
+        const newPasswordForm = document.getElementById('newPasswordForm');
 
         document.getElementById('forgotLink').addEventListener('click', (e) => {
             e.preventDefault();
@@ -96,9 +114,10 @@
         document.querySelectorAll('.backToLoginLink').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                resetForm.style.display      = 'none';
-                verifyCodeForm.style.display = 'none';
-                loginForm.style.display      = 'block';
+                resetForm.style.display       = 'none';
+                verifyCodeForm.style.display  = 'none';
+                newPasswordForm.style.display = 'none';
+                loginForm.style.display       = 'block';
             });
         });
 
@@ -176,13 +195,36 @@
 
                 if (res.ok) {
                     resetEmailTarget = email;
-                    const note = data.dev_code
-                        ? `Code (dev mode): ${data.dev_code}`
-                        : 'Access code sent to your email.';
+                    let note;
+                    if (data.preview_url) {
+                        note = 'Access code email sent!';
+                    } else if (data.dev_code) {
+                        note = `Code (dev mode): ${data.dev_code}`;
+                    } else {
+                        note = 'Access code sent to your email.';
+                    }
                     showResetMsg(note, false);
+
+                    // Store preview URL for verify step
+                    window._emailPreviewUrl = data.preview_url || null;
+
                     setTimeout(() => {
                         resetForm.style.display      = 'none';
                         verifyCodeForm.style.display = 'block';
+
+                        // Show email preview link in verify form
+                        const oldLink = document.getElementById('ethereal-preview-link');
+                        if (oldLink) oldLink.remove();
+                        if (window._emailPreviewUrl) {
+                            const linkEl = document.createElement('a');
+                            linkEl.id = 'ethereal-preview-link';
+                            linkEl.href = window._emailPreviewUrl;
+                            linkEl.target = '_blank';
+                            linkEl.rel = 'noopener noreferrer';
+                            linkEl.innerHTML = '&#128231; Open Email to Get Your Code';
+                            linkEl.style.cssText = 'display:block;text-align:center;margin:12px 0;color:#63b3ed;font-weight:600;font-size:0.9rem;text-decoration:underline;';
+                            verifyCodeForm.querySelector('.reset-instruction').after(linkEl);
+                        }
                     }, 1000);
                 } else {
                     showResetMsg(data.error || 'Could not send code.', true);
@@ -208,6 +250,8 @@
         }
 
         // --- 5. Verify Reset Code — server-side validation ---
+        let verifiedCode = '';
+
         verifyCodeForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn  = verifyCodeForm.querySelector('button[type="submit"]');
@@ -225,19 +269,19 @@
                 const data = await res.json();
 
                 if (res.ok) {
-                    showVerifyMsg('Code verified — please log in.', false);
+                    verifiedCode = code;
+                    showVerifyMsg('Code verified! Set your new password.', false);
                     setTimeout(() => {
-                        verifyCodeForm.style.display = 'none';
-                        loginForm.style.display      = 'block';
-                        document.getElementById('accessCode').value = '';
-                    }, 1200);
+                        verifyCodeForm.style.display  = 'none';
+                        newPasswordForm.style.display = 'block';
+                    }, 800);
                 } else {
                     showVerifyMsg(data.error || 'Incorrect code.', true);
                 }
             } catch {
                 showVerifyMsg('Cannot connect to server.', true);
             } finally {
-                btn.textContent = 'Verify & Login';
+                btn.textContent = 'Verify Code';
                 btn.disabled    = false;
             }
         });
@@ -249,6 +293,66 @@
                 el.id = 'verify-msg';
                 el.style.cssText = 'font-size:0.85rem;text-align:center;margin-bottom:8px;';
                 verifyCodeForm.querySelector('.reset-instruction').after(el);
+            }
+            el.style.color = isError ? '#ff6b6b' : '#68d391';
+            el.textContent = msg;
+        }
+
+        // --- 6. New Password submission ---
+        newPasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn      = newPasswordForm.querySelector('button[type="submit"]');
+            const newPass  = document.getElementById('newPassword').value;
+            const confPass = document.getElementById('confirmNewPassword').value;
+
+            if (newPass !== confPass) {
+                showNewPwdMsg('Passwords do not match.', true);
+                return;
+            }
+            if (newPass.length < 8) {
+                showNewPwdMsg('Password must be at least 8 characters.', true);
+                return;
+            }
+
+            btn.textContent = 'Resetting…';
+            btn.disabled    = true;
+
+            try {
+                const res  = await fetch('/api/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: resetEmailTarget, code: verifiedCode, new_password: newPass })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    showNewPwdMsg('Password reset successful! Redirecting to login…', false);
+                    setTimeout(() => {
+                        newPasswordForm.style.display = 'none';
+                        loginForm.style.display       = 'block';
+                        document.getElementById('newPassword').value        = '';
+                        document.getElementById('confirmNewPassword').value = '';
+                        document.getElementById('accessCode').value         = '';
+                        verifiedCode = '';
+                    }, 1500);
+                } else {
+                    showNewPwdMsg(data.error || 'Reset failed.', true);
+                }
+            } catch {
+                showNewPwdMsg('Cannot connect to server.', true);
+            } finally {
+                btn.textContent = 'Reset Password';
+                btn.disabled    = false;
+            }
+        });
+
+        function showNewPwdMsg(msg, isError) {
+            let el = document.getElementById('newpwd-msg');
+            if (!el) {
+                el = document.createElement('p');
+                el.id = 'newpwd-msg';
+                el.style.cssText = 'font-size:0.85rem;text-align:center;margin-bottom:8px;';
+                newPasswordForm.querySelector('.reset-instruction').after(el);
             }
             el.style.color = isError ? '#ff6b6b' : '#68d391';
             el.textContent = msg;
