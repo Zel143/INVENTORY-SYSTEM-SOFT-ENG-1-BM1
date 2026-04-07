@@ -26,7 +26,7 @@ By uniting data from the Social Services and Development Department (SSDD), drop
 
 ### Key Highlights:
 - **Platform Type:** Cloud-based, mobile-responsive web application
-- **Target Market:** Quezon City LGU (SSDD) and 800+ accredited NGOs
+- **Target Market:** Quezon City LGU (SSDD) and 800+ accredited NGOs (Department of the Interior and Local Government [DILG], 2023)
 - **Revenue Model:** B2G/B2B SaaS subscriptions
 - **Core Value:** First unified abuse case tracking system in Quezon City
 
@@ -40,7 +40,7 @@ Joining StartUp QC provides the crucial mentorship, networking opportunities, an
 
 | Benefit | Impact for SafeData QC |
 |---------|------------------------|
-| **Funding** | Up to ₱1,000,000 grant (professionals) or ₱100,000 prize (students) to develop our MVP |
+| **Funding** | Up to ₱1,000,000 grant (professionals) or ₱100,000 prize (students) to develop our MVP (StartUp QC, n.d.) |
 | **Mentorship** | Access to industry experts for technical and business guidance |
 | **Government Access** | Direct pathway to pilot with Quezon City agencies—our primary target market |
 | **Network** | Connections to potential NGO partners and investors |
@@ -51,7 +51,7 @@ Joining StartUp QC provides the crucial mentorship, networking opportunities, an
 ## 4. Problem Statement
 
 ### The Core Issue
-Currently, there is an **inadequate system for documenting incidences of abuse** at the local level in Quezon City.
+Currently, there is an **inadequate system for documenting incidences of abuse** at the local level in Quezon City (Quezon City Social Services and Development Department [SSDD], 2024).
 
 ### The Gap We Fill
 There is no established database to track abuse against highly vulnerable groups, including:
@@ -66,9 +66,9 @@ Because of this data gap, various welfare agencies **lack a firm basis for deter
 
 ### Compounding Factors
 
-1. **Temporary Processing Centers:** The city relies heavily on a temporary drop-in center to process cases before referring them to established welfare institutions, making case-tracking highly disjointed.
+1. **Temporary Processing Centers:** The city relies heavily on a temporary drop-in center to process cases before referring them to established welfare institutions, making case-tracking highly disjointed (Quezon City SSDD, 2024).
 
-2. **Overwhelmed Staff:** The SSDD is experiencing an increased number of clients in crisis situations, putting additional strain on city resources.
+2. **Overwhelmed Staff:** The SSDD is experiencing an increased number of clients in crisis situations, putting additional strain on city resources (Quezon City SSDD, 2024).
 
 3. **No Unified Records:** Cases are documented separately by different agencies, leading to redundant paperwork and lost information during client transfers.
 
@@ -294,7 +294,7 @@ Given the extremely sensitive nature of abuse victim data, security is non-negot
 | **Audit Trail** | Immutable logs of all data access and modifications |
 | **2FA Authentication** | Required for all users handling sensitive records |
 | **Data Anonymization** | For analytics/reporting (no PII exposed) |
-| **RA 10173 Compliance** | Full adherence to Data Privacy Act |
+| **RA 10173 Compliance** | Full adherence to Data Privacy Act (Republic Act No. 10173, 2012) |
 | **Consent Management** | Digital consent workflows for data subjects |
 
 ---
@@ -307,7 +307,7 @@ Given the extremely sensitive nature of abuse victim data, security is non-negot
 |-----------|----------|
 | **Infrastructure** | Cloud-based (AWS/Azure) for scalability and reliability |
 | **Security** | End-to-end encryption, role-based access controls |
-| **Compliance** | Full adherence to RA 10173 (Data Privacy Act of 2012) |
+| **Compliance** | Full adherence to RA 10173, Data Privacy Act of 2012 (Republic Act No. 10173, 2012) |
 | **Accessibility** | Mobile-responsive design for field social workers |
 | **Integration** | API-ready for future government system integrations |
 
@@ -347,7 +347,7 @@ Given the extremely sensitive nature of abuse victim data, security is non-negot
 
 #### Secondary Market: NGO Sector
 
-**800+ Accredited Organizations**
+**800+ Accredited Organizations** (DILG, 2023)
 - Non-Governmental Organizations (NGOs)
 - People's Organizations (POs)
 - Faith-based welfare groups
@@ -483,7 +483,7 @@ SafeData QC operates on a **Business-to-Government (B2G)** and **Business-to-Bus
 
 ## Appendix B: Data Privacy Compliance (RA 10173)
 
-SafeData QC is committed to full compliance with the **Data Privacy Act of 2012 (Republic Act No. 10173)**.
+SafeData QC is committed to full compliance with the **Data Privacy Act of 2012 (Republic Act No. 10173)** (Republic Act No. 10173, 2012).
 
 ### Compliance Measures:
 
@@ -523,3 +523,17 @@ SafeData QC is committed to full compliance with the **Data Privacy Act of 2012 
 
 *Document Version: 1.0*  
 *Last Updated: April 2026*
+
+---
+
+## References
+
+Department of the Interior and Local Government. (2023). *Accredited civil society organizations in Quezon City*. Republic of the Philippines. https://www.dilg.gov.ph/
+
+National Privacy Commission. (n.d.). *Data Privacy Act of 2012*. Republic of the Philippines. https://www.privacy.gov.ph/data-privacy-act/
+
+Quezon City Social Services and Development Department. (2024). *Social welfare and development services*. Quezon City Government. https://www.quezoncity.gov.ph/city-departments/social-services-development-department/
+
+Republic Act No. 10173. (2012). *An act protecting individual personal information in information and communications systems in the government and the private sector, creating for this purpose a National Privacy Commission, and for other purposes*. Republic of the Philippines. https://www.officialgazette.gov.ph/2012/08/15/republic-act-no-10173/
+
+StartUp QC. (n.d.). *About StartUp QC: Nurturing the entrepreneurial spirit of Quezon City*. Quezon City Information Technology and Electronic Commerce Office. https://startup.quezoncity.gov.ph/
